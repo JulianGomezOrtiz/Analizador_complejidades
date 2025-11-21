@@ -1,4 +1,3 @@
-# src/analyzer/ast_transformer.py
 """
 Transformador Lark -> AST (estructura de diccionarios).
 Este AST es intencionalmente simple (serializable a JSON).
@@ -23,15 +22,14 @@ class PseudoTransformer(Transformer):
     """
 
     def start(self, items):
-        # items: sequence of decl_or_proc
+        # items: sequence of routines
         program = {"type": "Program", "declarations": [], "procedures": []}
         for it in items:
-            if it["type"] == "VarDecl":
+            if isinstance(it, dict) and it.get("type") == "VarDecl":
                 program["declarations"].append(it)
-            elif it["type"] == "Procedure":
+            elif isinstance(it, dict) and it.get("type") == "Procedure":
                 program["procedures"].append(it)
             else:
-                # fallback
                 program.setdefault("others", []).append(it)
         return program
 
@@ -39,14 +37,12 @@ class PseudoTransformer(Transformer):
     # Declarations and procedures
     ########################################################
     def var_decl(self, items):
-        # items[0] is var_list
         return make_node("VarDecl", vars=items[0])
 
     def var_list(self, items):
         return items
 
     def var_item(self, items):
-        # IDENTIFIER with optional ranges
         name = str(items[0])
         dims = []
         for el in items[1:]:
@@ -54,13 +50,13 @@ class PseudoTransformer(Transformer):
         return {"name": name, "dims": dims}
 
     def routine(self, items):
-        # "PROCEDURE" IDENTIFIER "(" param_list? ")" block "END" ...
-        # items = [IDENTIFIER, param_list? , block]
+        # PROCEDURE IDENTIFIER "(" param_list? ")" block
         name = str(items[0])
-        if isinstance(items[1], list):
-            params = items[1]
+        if len(items) == 3:
+            params = items[1] if isinstance(items[1], list) else []
             block = items[2]
         else:
+            # no params
             params = []
             block = items[1]
         return make_node("Procedure", name=name, params=params, body=block["body"])
@@ -69,15 +65,9 @@ class PseudoTransformer(Transformer):
         return items
 
     def param(self, items):
-        # either IDENTIFIER or "Clase" IDENTIFIER
-        if len(items) == 1:
-            return {"name": str(items[0]), "type": "var"}
-        else:
-            # Clase IDENTIFIER
-            return {"name": str(items[1]), "type": "class"}
+        return {"name": str(items[0]), "type": "var"}
 
     def block(self, items):
-        # items -> statements
         stmts = []
         for it in items:
             if it is None:
@@ -99,7 +89,6 @@ class PseudoTransformer(Transformer):
         return make_node("Assign", target=lvalue, value=expr)
 
     def lvalue(self, items):
-        # IDENTIFIER with optional accesses
         name = str(items[0])
         accesses = []
         for acc in items[1:]:
@@ -110,12 +99,12 @@ class PseudoTransformer(Transformer):
         return make_node("LValue", **node)
 
     def if_stmt(self, items):
-        # IF (cond) THEN block (ELSE block)? END
         cond = items[0]
-        then_block = items[1]
-        else_block = items[2] if len(items) > 2 else {
-            "type": "Block", "body": []}
-        return make_node("If", cond=cond, then=then_block["body"], else_=else_block["body"])
+        then_block = {"body": items[1]} if isinstance(
+            items[1], list) else items[1]
+        else_block = {"body": items[2]} if len(
+            items) > 2 else {"type": "Block", "body": []}
+        return make_node("If", cond=cond, then=then_block["body"], else_=else_block.get("body", []))
 
     def while_stmt(self, items):
         cond = items[0]
@@ -123,16 +112,14 @@ class PseudoTransformer(Transformer):
         return make_node("While", cond=cond, body=block["body"])
 
     def for_stmt(self, items):
-        # FOR IDENT ASSIGN expr TO expr DO block END
+        # FOR IDENT ASSIGN expr TO expr DO stmt_list END
         var = str(items[0])
         start = items[1]
         end = items[2]
         block = items[3]
-        return make_node("For", var=var, start=start, end=end, body=block["body"])
+        return make_node("For", var=var, start=start, end=end, body=block)
 
     def repeat_stmt(self, items):
-        # REPEAT statement* UNTIL (expr)
-        # items: [stmt1, stmt2, ..., expr]
         *stmts, cond = items
         body = []
         for s in stmts:
@@ -159,7 +146,6 @@ class PseudoTransformer(Transformer):
     # Expressions
     ########################################################
     def expr(self, items):
-        # direct passthrough
         return items[0] if items else None
 
     def or_expr(self, items):
@@ -172,23 +158,28 @@ class PseudoTransformer(Transformer):
             return items[0]
         return make_node("LogicAnd", operands=items)
 
-    def not_(self, items):
-        # items[0] is inner
-        return make_node("Not", operand=items[0])
+    def unary(self, items):
+        op = str(items[0])
+        val = items[1] if len(items) > 1 else items[0]
+        # if transformer passes ("+"|"-") and factor, items may be [ '-', <node> ] or if Lark grouped differently
+        if isinstance(val, list):
+            # defensive
+            val = val[0]
+        return make_node("UnaryOp", op=op, operand=val)
 
     def comparison(self, items):
         if len(items) == 1:
             return items[0]
         left = items[0]
-        op = str(items[1].children[0]) if isinstance(
-            items[1], Tree) else str(items[1])
+        op_token = items[1]
         right = items[2]
+        op = str(op_token) if not isinstance(
+            op_token, Tree) else str(op_token.children[0])
         return make_node("BinOp", op=op, left=left, right=right)
 
     def arith(self, items):
         if len(items) == 1:
             return items[0]
-        # binary left associative
         node = items[0]
         i = 1
         while i < len(items):
@@ -198,27 +189,32 @@ class PseudoTransformer(Transformer):
             i += 2
         return node
 
-    def term(self, items):
-        return self.arith(items)
+    def id_with_calls_or_indexes(self, items):
+        # first is IDENTIFIER, followed by zero or more function_call or indexing
+        name = str(items[0])
+        rest = items[1:]
+        node = make_node("Identifier", name=name)
+        # process rest: function_call returns list of args, indexing returns index nodes
+        # We'll fold them: if first rest is function_call -> CallExpr, then indexes become access of call result
+        current = node
+        for r in rest:
+            if isinstance(r, list):
+                # function_call returns list (arg_list) or empty list
+                current = make_node("CallExpr", name=name if current.get(
+                    "type") == "Identifier" else None, args=r)
+            else:
+                # indexing -> should be a node like index expression; wrap into ArrayAccess
+                current = make_node("ArrayAccess", array=(
+                    current.get("name") or current), index=r)
+        return current
 
-    def factor(self, items):
-        # items could be NUMBER, IDENTIFIER, call_expr, etc.
+    def function_call(self, items):
+        # returns arg list (possibly empty)
+        return items[0] if items else []
+
+    def indexing(self, items):
+        # items: expr ; in grammar indexing can be repeated, but transformer will call it repeatedly
         return items[0]
-
-    def call_expr(self, items):
-        name = str(items[0])
-        args = items[1] if len(items) > 1 else []
-        return make_node("CallExpr", name=name, args=args)
-
-    def array_access(self, items):
-        name = str(items[0])
-        idx = items[1]
-        return make_node("ArrayAccess", array=name, index=idx)
-
-    def field_access(self, items):
-        obj = str(items[0])
-        field = str(items[1])
-        return make_node("FieldAccess", object=obj, field=field)
 
     def IDENTIFIER(self, token):
         return make_node("Identifier", name=str(token))
@@ -234,7 +230,6 @@ class PseudoTransformer(Transformer):
         return str(token)
 
     def __default__(self, data, children, meta):
-        # fallback for unhandled nodes: return children if single else a node
         if len(children) == 1:
             return children[0]
         return children

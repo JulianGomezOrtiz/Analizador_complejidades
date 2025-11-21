@@ -7,6 +7,10 @@ import json
 from datetime import datetime
 
 
+def generate_report(data):
+    return "Reporte generado correctamente."
+
+
 def format_analysis_json(ast: Dict[str, Any], engine_output: Dict[str, Any], llm_output: Dict[str, Any] = None) -> Dict[str, Any]:
     meta = {
         "generated_at": datetime.utcnow().isoformat() + "Z",

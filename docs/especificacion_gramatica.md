@@ -75,82 +75,48 @@ Esta es la definición oficial del lenguaje, independientemente del parser Lark.
 Se presenta en EBNF legible, estructurada y exhaustiva.
 
 ✔ 4.1 EBNF oficial
-<program> ::= { <decl_or_proc> }
+<start> ::= { <decl_or_proc> }
 
-<decl_or_proc> ::= <routine> | <global-decl>
+<decl_or_proc> ::= <var_decl> | <class_decl> | <routine>
 
-<global-decl> ::= "VAR" <var_list> ";"
-<var_list> ::= <var_decl> { "," <var_decl> }
+<var_decl> ::= "VAR" <var_list> ";"
+<var_list> ::= <var_item> { "," <var_item> }
+<var_item> ::= IDENTIFIER { "[" <range> "]" }
+<range> ::= <expr> [ ".." <expr> ]
 
-<var_decl> ::= IDENTIFIER [ "[" <range> "]" { "[" <range> "]" } ]
-<range> ::= <number> | <number> ".." <number> | <identifier>
+<class_decl> ::= "CLASS" IDENTIFIER "{" <class_field_list> "}" ";"
+<class_field_list> ::= IDENTIFIER { IDENTIFIER }
 
-<routine> ::= "PROCEDURE" IDENTIFIER "(" [ <param_list> ] ")" <block> "END" "PROCEDURE"?
+<routine> ::= "PROCEDURE" IDENTIFIER "(" [ <param_list> ] ")" <block> "END" ["PROCEDURE"] ";"
 <param_list> ::= <param> { "," <param> }
 
-<param>          ::= IDENTIFIER [ "[" <range> "]" ] | "Clase" IDENTIFIER
+<param> ::= IDENTIFIER [ "[" <range> "]" ] | "Class" IDENTIFIER
 
-<block> ::= { <var_section> } "BEGIN" { <statement> } "END" [ "PROCEDURE" ]
-<var_section> ::= "VAR" <var_list> ";"
+<block> ::= "BEGIN" { <statement> } "END"
 
-<statement> ::= <assign_stmt> ";"
-| <if_stmt>
-| <while_stmt>
-| <for_stmt>
-| <repeat_stmt>
-| <call_stmt> ";"
-| <return_stmt> ";"
-| <empty_stmt>
-
+<statement> ::= <simple_stmt> ";" | <if_stmt> | <while_stmt> | <for_stmt> | <repeat_stmt> | <call_stmt> ";" | <return_stmt> ";"
+<simple_stmt> ::= <assign_stmt> | ";"
 <assign_stmt> ::= <lvalue> "🡨" <expr>
-<lvalue> ::= IDENTIFIER { "." IDENTIFIER | "[" <expr> "]" }
+<lvalue> ::= IDENTIFIER | IDENTIFIER "[" <expr> "]" | IDENTIFIER "." IDENTIFIER
 
-<if_stmt> ::= "IF" "(" <expr> ")" "THEN" <block>
-[ "ELSE" <block> ]
-"END" "IF"?
-<while_stmt> ::= "WHILE" "(" <expr> ")" "DO" <block> "END" "WHILE"?
-<for_stmt> ::= "FOR" IDENTIFIER "🡨" <expr>
-"TO" <expr> "DO" <block> "END" "FOR"?
-<repeat_stmt> ::= "REPEAT" <block>
-"UNTIL" "(" <expr> ")" ";"
+<if_stmt> ::= "IF" "(" <expr> ")" "THEN" <block> [ "ELSE" <block> ] "END"
+<while_stmt> ::= "WHILE" "(" <expr> ")" "DO" <block>
+<for_stmt> ::= "FOR" IDENTIFIER "🡨" <expr> "TO" <expr> "DO" <block>
+<repeat_stmt> ::= "REPEAT" { <statement> } "UNTIL" "(" <expr> ")"
 
 <call_stmt> ::= "CALL" IDENTIFIER "(" [ <arg_list> ] ")"
 <arg_list> ::= <expr> { "," <expr> }
 
 <return_stmt> ::= "RETURN" [ <expr> ]
 
-<empty*stmt> ::= /* empty \_/
-
-<expr> ::= <logic_or>
-<logic_or> ::= <logic_and> { "or" <logic_and> }
-<logic_and> ::= <logic_not> { "and" <logic_not> }
-<logic_not> ::= [ "not" ] <comparison>
-
-<comparison> ::= <arith> { ("=" | "<>" | "!=" | "<" | ">" | "<=" | ">=") <arith> }
+<expr> ::= <or_expr>
+<or_expr> ::= <and_expr> { "or" <and_expr> }
+<and_expr> ::= <not_expr> { "and" <not_expr> }
+<not_expr> ::= "not" <not_expr> | <comparison>
+<comparison> ::= <arith> [ ("<" | ">" | "<=" | ">=" | "=" | "<>" | "!=") <arith> ]
 <arith> ::= <term> { ("+" | "-") <term> }
 <term> ::= <factor> { ("\*" | "/" | "div" | "mod") <factor> }
-<factor> ::= <unary>
-| <call_expr>
-| "(" <expr> ")"
-| "NULL"
-| NUMBER
-| STRING
-| IDENTIFIER
-| <array_access>
-| <field_access>
-
-<unary> ::= ("+" | "-") <factor>
-
-<call_expr> ::= IDENTIFIER "(" [ <arg_list> ] ")"
-<array_access> ::= IDENTIFIER "[" <expr> "]"
-<field_access> ::= IDENTIFIER "." IDENTIFIER
-
-IDENTIFIER ::= letter { letter | digit | "\_" }
-NUMBER ::= digit { digit }
-STRING ::= '"' { any_char_except_quote } '"'
-
-COMMENT ::= "►" { any_char_except_newline } NEWLINE
-WS ::= (SPACE | TAB | NEWLINE) { SPACE | TAB | NEWLINE }
+<factor> ::= "-" <factor> | "+" <factor> | IDENTIFIER "(" [ <arg_list> ] ")" | IDENTIFIER "[" <expr> "]" | IDENTIFIER "." IDENTIFIER | "(" <expr> ")" | NUMBER | STRING | IDENTIFIER | "NULL"
 
 ✔ 4.2 Reglas y decisiones de diseño
 Asignación

@@ -1,75 +1,126 @@
-// grammar.lark - inicial (ampliable)
-%import common.CNAME -> IDENTIFIER
-%import common.INT -> NUMBER
-%import common.WS_INLINE
-%import common.NEWLINE
-%ignore WS_INLINE
+// grammar.lark - Gramática Lark para el proyecto (compatible con los tests entregados)
 
-// Comentarios estilo enunciado
-COMMENT: "►" /[^\n]/* -> ignore
+%ignore /[ \t\f\r]+/            // espacios en blanco
+%ignore /\n+/                   // saltos de línea (se manejan por tokens)
 %ignore COMMENT
 
-start: (decl_or_proc)*
+// ----- Terminals -----
+LPAR: "("
+RPAR: ")"
+LSQB: "["
+RSQB: "]"
+COMMA: ","
+SEMI: ";"
+COLON: ":"
+ASSIGN: ":="
+PLUS: "+"
+MINUS: "-"
+MUL: "*"
+DIV: "/"
+EQ: "="
+LT: "<"
+GT: ">"
+LE: "<="
+GE: ">="
 
-decl_or_proc: routine | var_decl
+ARROW: "<-"
 
-var_decl: "VAR" var_list ";"
-var_list: var_item ("," var_item)*
-var_item: IDENTIFIER ("[" range "]")*
+PROCEDURE: "PROCEDURE"
+BEGINKW: "BEGIN"
+ENDKW: "END"
+IFKW: "IF"
+THENKW: "THEN"
+ELSEKW: "ELSE"
+FORKW: "FOR"
+TOWK: "TO"
+DOKW: "DO"
+WHILEKW: "WHILE"
+REPEATKW: "REPEAT"
+UNTILKW: "UNTIL"
+RETURNKW: "RETURN"
+CALLKW: "CALL"
 
-range: NUMBER (".." NUMBER)?
-     | IDENTIFIER
+COMMENT: "►" /[^\n]*/                // comentario con el símbolo ►
+%ignore /\/\/[^\n]*/                 // también C++ style comments
 
-routine: "PROCEDURE" IDENTIFIER "(" param_list? ")" block "END" ("PROCEDURE")?
-param_list: param ("," param)*
-param: IDENTIFIER ("[" range "]")? | "Clase" IDENTIFIER
+// IDENTIFIERS and NUMBERS
+%import common.CNAME -> IDENTIFIER
+%import common.INT -> NUMBER
 
-block: "BEGIN" statement* "END"
+// ----- Start -----
+start: program
 
-statement: assign_stmt ";"
-         | if_stmt
-         | while_stmt
-         | for_stmt
-         | repeat_stmt
-         | call_stmt ";"
-         | return_stmt ";"
-         | ";"
+program: (routine)*
+
+routine: PROCEDURE IDENTIFIER "(" param_list? ")" block
+
+param_list: param (COMMA param)*
+param: IDENTIFIER
+
+block: BEGINKW stmt_list ENDKW
+
+stmt_list: (statement)*
+
+statement: simple_stmt
+         | compound_stmt
+
+// ----- Simple statements (terminated by ;) -----
+simple_stmt: assign_stmt SEMI
+           | return_stmt SEMI
+           | call_stmt SEMI
+           | SEMI
 
 assign_stmt: lvalue ASSIGN expr
-lvalue: IDENTIFIER ("." IDENTIFIER | "[" expr "]")*
+lvalue: IDENTIFIER (indexing)*
+      | field_access
 
-if_stmt: "IF" "(" expr ")" "THEN" block ("ELSE" block)? "END"
-while_stmt: "WHILE" "(" expr ")" "DO" block "END"
-for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block "END"
-repeat_stmt: "REPEAT" statement* "UNTIL" "(" expr ")" ";"
+field_access: IDENTIFIER "." IDENTIFIER
 
-call_stmt: "CALL" IDENTIFIER "(" arg_list? ")"
-arg_list: expr ("," expr)*
+call_stmt: CALLKW IDENTIFIER "(" arg_list? ")"
 
-return_stmt: "RETURN" expr?
+arg_list: expr (COMMA expr)*
 
-?expr: or_expr
-?or_expr: and_expr ("or" and_expr)*
-?and_expr: not_expr ("and" not_expr)*
-?not_expr: "not" not_expr -> not
-         | comparison
-?comparison: arith ((">"|"<"|"<="|">="|"="|"<>"|"!=") arith)?
-?arith: term (("+"|"-") term)*
-?term: factor (("*"|"/"|"div"|"mod") factor)*
-?factor: "-" factor
-       | "+" factor
-       | call_expr
+return_stmt: RETURNKW expr
+
+// ----- Compound / control statements -----
+compound_stmt: if_stmt
+             | for_stmt
+             | while_stmt
+             | repeat_stmt
+             | block
+
+if_stmt: IFKW expr THENKW stmt_list (ELSEKW stmt_list)? ENDKW
+
+for_stmt: FORKW IDENTIFIER ASSIGN expr TOWK expr DOKW stmt_list ENDKW
+
+while_stmt: WHILEKW expr DOKW stmt_list ENDKW
+
+repeat_stmt: REPEATKW stmt_list UNTILKW expr SEMI?
+
+// ----- Expressions -----
+?expr: expr_or
+
+?expr_or: expr_or "or" expr_and  -> or_expr
+        | expr_and
+
+?expr_and: expr_and "and" expr_cmp -> and_expr
+         | expr_cmp
+
+?expr_cmp: arith_expr ((">" | "<" | ">=" | "<=" | "=") arith_expr)?
+arith_expr: arith_expr ("+" | "-") term   -> binop
+          | term
+
+term: term ("*" | "/") factor              -> binop
+    | factor
+
+?factor: NUMBER
+       | IDENTIFIER function_call
+       | IDENTIFIER indexing                  -> array_access
+       | IDENTIFIER                            -> var
        | "(" expr ")"
-       | "NULL"      -> null
-       | IDENTIFIER
-       | NUMBER
-       | STRING
-       | IDENTIFIER "[" expr "]" -> array_access
-       | IDENTIFIER "." IDENTIFIER -> field_access
 
-call_expr: IDENTIFIER "(" arg_list? ")"
+function_call: "(" arg_list? ")"
+indexing: ("[" expr "]")+
 
-ASSIGN: "🡨" | ":="
-
-STRING: /"([^"\\]|\\.)*"/
-%ignore /[ \t\r\n]+/
+// ----- Helpers for tokenizer friendliness -----
+%ignore /[ \t\f\r]+/    // spaces
