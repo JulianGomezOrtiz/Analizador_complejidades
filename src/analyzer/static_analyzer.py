@@ -1,116 +1,115 @@
-"""
-Analizador estático que recorre el AST y extrae:
-- loops (anidados, límites simbólicos)
-- recursiones (llamadas a la misma procedure)
-- llamadas (CALL)
-- variables usadas
-Devuelve un "context" consumible por complexity_engine.
-"""
-
-from typing import Dict, Any, List, Tuple, Set
+from typing import Dict, Any, List
 
 
 def analyze_ast_for_patterns(ast: Dict[str, Any]) -> Dict[str, Any]:
-    result = {"procedures": {}, "global": {}}
+    """
+    Recorre el AST para extraer métricas clave:
+    - Bucles (anidamiento, rangos)
+    - Recursión (llamadas a sí mismo)
+    - Llamadas externas
+    """
+    procedures = {}
 
-    procedures = ast.get("procedures", [])
+    # Si el AST es una lista (caso raro), buscar dicts dentro
+    procs_list = ast.get("procedures", []) if isinstance(ast, dict) else []
 
-    for proc in procedures:
-        name = proc.get("name")
-
-        ctx = {
-            "loops": [],
-            "recursions": [],
-            "calls": [],
-            "max_nesting": 0,
-            "variables": set(),
-            "annotations": {},
-        }
-
+    for proc in procs_list:
+        proc_name = proc.get("name")
         body = proc.get("body", [])
 
-        # --- Recursive walk ----------------------------------------------------
-        def walk(stmts, nesting=0):
-            ctx["max_nesting"] = max(ctx["max_nesting"], nesting)
+        # Analizadores de estado
+        analyzer = ProcAnalyzer(proc_name)
+        analyzer.visit(body)
 
-            for s in stmts:
-                if not s:
-                    continue
+        procedures[proc_name] = {
+            "loops": analyzer.loops,
+            "recursions": analyzer.recursions,
+            "calls": analyzer.calls,
+            "max_nesting": analyzer.max_nesting
+        }
 
-                stype = s.get("type")
+    return {"procedures": procedures}
 
-                # ----------- FOR -------------------
-                if stype == "For":
-                    ctx["loops"].append(
-                        {
-                            "type": "For",
-                            "var": s.get("var"),
-                            "start": s.get("start"),
-                            "end": s.get("end"),
-                            "body": s.get("body", []),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk(s.get("body", []), nesting + 1)
 
-                # ----------- WHILE ------------------
-                elif stype == "While":
-                    ctx["loops"].append(
-                        {
-                            "type": "While",
-                            "cond": s.get("cond"),
-                            "body": s.get("body", []),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk(s.get("body", []), nesting + 1)
+class ProcAnalyzer:
+    def __init__(self, proc_name):
+        self.proc_name = proc_name
+        self.loops = []
+        self.recursions = []
+        self.calls = []
+        self.max_nesting = 0
+        self.current_nesting = 0
 
-                # ----------- REPEAT -----------------
-                elif stype == "Repeat":
-                    ctx["loops"].append(
-                        {
-                            "type": "Repeat",
-                            "cond": s.get("cond"),
-                            "body": s.get("body", []),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk(s.get("body", []), nesting + 1)
+    def visit(self, node):
+        if isinstance(node, list):
+            for stmt in node:
+                self.visit(stmt)
+            return
 
-                # ----------- IF ---------------------
-                elif stype == "If":
-                    walk(s.get("then", []), nesting + 1)
-                    walk(s.get("else_", []), nesting + 1)
+        if not isinstance(node, dict):
+            return
 
-                # ----------- CALL --------------------
-                elif stype == "Call":
-                    cname = s.get("name")
-                    ctx["calls"].append(
-                        {"name": cname, "args": s.get("args", [])}
-                    )
-                    if cname == name:
-                        ctx["recursions"].append(
-                            {"call": s, "args": s.get("args", [])}
-                        )
+        typ = node.get("type")
 
-                # ----------- ASSIGN ------------------
-                elif stype == "Assign":
-                    tgt = s.get("target", {})
-                    if tgt.get("type") == "LValue":
-                        ctx["variables"].add(tgt.get("name"))
+        # --- MANEJO DE BUCLES ---
+        if typ in ("For", "While", "Repeat"):
+            self.current_nesting += 1
+            self.max_nesting = max(self.max_nesting, self.current_nesting)
 
-                # fallback for container nodes
-                elif isinstance(s, dict):
-                    for v in s.values():
-                        if isinstance(v, list):
-                            walk(v, nesting)
+            # Guardar info del loop
+            if typ == "For":
+                self.loops.append({
+                    "type": "For",
+                    "var": node.get("var"),
+                    "start": node.get("start"),
+                    "end": node.get("end"),
+                    "nesting": self.current_nesting
+                })
+            else:
+                self.loops.append(
+                    {"type": typ, "nesting": self.current_nesting})
 
-        walk(body, nesting=0)
+            # Visitar cuerpo
+            self.visit(node.get("body", []))
+            self.current_nesting -= 1
+            return
 
-        ctx["annotations"]["num_loops"] = len(ctx["loops"])
-        ctx["annotations"]["num_calls"] = len(ctx["calls"])
-        ctx["variables"] = sorted(list(ctx["variables"]))
+        # --- MANEJO DE CONTROL DE FLUJO (IF) ---
+        if typ == "If":
+            # No aumentamos nesting de bucles, pero visitamos las ramas
+            self.visit(node.get("then", []))
+            self.visit(node.get("else_", []))
+            return
 
-        result["procedures"][name] = ctx
+        # --- MANEJO DE LLAMADAS (RECURSIVAS O EXTERNAS) ---
+        if typ == "Call":
+            name = node.get("name")
+            args = node.get("args", [])
+            if name == self.proc_name:
+                self.recursions.append({"args": args})
+            else:
+                self.calls.append({"name": name, "args": args})
+            # Revisar argumentos por si hay llamadas anidadas: f(g(x))
+            for arg in args:
+                self.visit(arg)
+            return
 
-    return result
+        # --- EXPRESIONES Y OTROS NODOS ---
+        # Hay que visitar hijos para encontrar llamadas ocultas (ej: Return Fib(n-1))
+
+        if typ == "Return":
+            self.visit(node.get("value"))
+
+        elif typ == "Assign":
+            self.visit(node.get("value"))
+
+        elif typ == "BinOp":
+            self.visit(node.get("left"))
+            self.visit(node.get("right"))
+
+        elif typ == "Unary":
+            self.visit(node.get("expr"))
+
+        # Caso general: Si tiene cuerpo o lista, visítalos
+        if "body" in node:
+            self.visit(node["body"])

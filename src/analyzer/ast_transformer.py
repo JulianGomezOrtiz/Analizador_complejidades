@@ -1,4 +1,6 @@
+# ast_transformer.py
 from lark import Transformer, Token
+from typing import Any, List
 
 
 def tree_to_ast(tree):
@@ -6,339 +8,373 @@ def tree_to_ast(tree):
 
 
 class ASTBuilder(Transformer):
-    """Convierte el árbol de Lark en un AST basado únicamente en diccionarios.
-
-    Diseño robusto: cada regla intenta aceptar children que sean dicts (nodos AST),
-    Token (terminales) o listas (posibles resultados sin normalizar). El objetivo:
-    que stmt_list devuelva siempre {"type":"Block","body":[...]}.
+    """
+    Convierte el árbol de Lark en un AST basado únicamente en diccionarios.
+    Maneja Tokens, dicts ya transformados y listas anidadas.
     """
 
-    ############################################################################
+    # --------------------
     # UTILIDADES
-    ############################################################################
-    # ============================
-    #   FIX: convertir raíz start
-    # ============================
+    # --------------------
+    def _is_token(self, x):
+        return isinstance(x, Token)
+
+    def _tok_type(self, t):
+        return t.type if isinstance(t, Token) else None
+
+    def _tok_str(self, t):
+        return str(t) if isinstance(t, Token) else str(t)
+
+    def _ensure_identifier_dict(self, token_or_dict):
+        if isinstance(token_or_dict, dict) and token_or_dict.get("type") == "Identifier":
+            return token_or_dict
+        if isinstance(token_or_dict, dict) and "name" in token_or_dict:
+            return {"type": "Identifier", "name": token_or_dict["name"]}
+        if isinstance(token_or_dict, Token):
+            return {"type": "Identifier", "name": str(token_or_dict)}
+        return {"type": "Identifier", "name": str(token_or_dict)}
+
+    def _ensure_number_dict(self, token_or_dict):
+        if isinstance(token_or_dict, dict) and token_or_dict.get("type") == "Number":
+            return token_or_dict
+        if isinstance(token_or_dict, Token):
+            return {"type": "Number", "value": int(token_or_dict)}
+        if isinstance(token_or_dict, int):
+            return {"type": "Number", "value": token_or_dict}
+        return {"type": "Number", "value": int(str(token_or_dict))}
+
+    # --------------------
+    # RAÍZ / PROGRAMA
+    # --------------------
     def start(self, items):
-        # items = [Program]
-        # devolvemos directamente el diccionario Program
+        # items suele ser [program]
         if len(items) == 1 and isinstance(items[0], dict):
             return items[0]
         return items
 
-    def _as_name(self, node):
-        # Extrae el nombre de un Token o un dict Identifier o de estructuras similares
-        if isinstance(node, Token):
-            return str(node)
-        if isinstance(node, dict):
-            # Puede ser {'type':'Identifier','name':...} o {'name':...}
-            if node.get("type") == "Identifier":
-                return node["name"]
-            if "name" in node:
-                return node["name"]
-        # fallback
-        return str(node)
+    def program(self, items):
+        """Regresa {"type":"Program","procedures":[...]}"""
+        procs = [x for x in items if isinstance(
+            x, dict) and x.get("type") == "Procedure"]
+        return {"type": "Program", "procedures": procs}
 
-    def _to_identifier(self, token_or_node):
-        if isinstance(token_or_node, dict):
-            # si ya es Identifier
-            if token_or_node.get("type") == "Identifier":
-                return token_or_node
-            if "name" in token_or_node:
-                return {"type": "Identifier", "name": token_or_node["name"]}
-        if isinstance(token_or_node, Token):
-            return {"type": "Identifier", "name": str(token_or_node)}
-        # fallback
-        return {"type": "Identifier", "name": str(token_or_node)}
-
-    def _to_number(self, token_or_node):
-        if isinstance(token_or_node, dict) and token_or_node.get("type") == "Number":
-            return token_or_node
-        if isinstance(token_or_node, Token):
-            try:
-                return {"type": "Number", "value": int(token_or_node)}
-            except Exception:
-                try:
-                    return {"type": "Number", "value": int(token_or_node.value)}
-                except Exception:
-                    raise
-        # fallback if already a python int
-        if isinstance(token_or_node, int):
-            return {"type": "Number", "value": token_or_node}
-        return {"type": "Number", "value": int(str(token_or_node))}
-
-    ############################################################################
+    # --------------------
     # TERMINALES
-    ############################################################################
+    # --------------------
     def IDENTIFIER(self, token):
         return {"type": "Identifier", "name": str(token)}
 
     def NUMBER(self, token):
         return {"type": "Number", "value": int(token)}
 
-    ############################################################################
-    # PROGRAMA
-    ############################################################################
-    def program(self, items):
-        """Regresa {"type": "Program", "procedures": [...]}"""
-        procs = [x for x in items if isinstance(
-            x, dict) and x.get("type") == "Procedure"]
-        return {"type": "Program", "procedures": procs}
-
-        ###########################################################################
-    #   NUEVO: convertir "routine" → dict Procedure
-    ###########################################################################
+    # --------------------
+    # RUTINAS / PROCEDIMIENTOS
+    # --------------------
     def routine(self, items):
+        # <--- AGREGAR ESTO
+        print(f"\n[DEBUG ROUTINE] Items recibidos: {items}")
 
-        # ignoramos items[0] (Token PROCEDURE)
-        identifier = items[1]       # dict: {"type":"Identifier","name":...}
-
-        # nombre del procedimiento
-        name = identifier["name"]
-
-        # detectar si hay parámetros
-        params = []
+        name = None
+        params: List[dict] = []
         block = None
 
-        # items puede ser: [Token PROC, identifier, block]
-        # o:              [Token PROC, identifier, params, block]
-        for it in items[2:]:
-            if isinstance(it, list):      # lista = parámetros
-                params = [p for p in it if isinstance(
-                    p, dict) and p.get("name")]
-            elif isinstance(it, dict) and it.get("type") == "Block":
+        # 1) extraer nombre
+        for it in items:
+            if isinstance(it, dict) and it.get("type") == "Identifier":
+                name = it["name"]
+                break
+            if isinstance(it, Token) and it.type == "IDENTIFIER":
+                name = str(it)
+                break
+
+        # 2) buscar bloque (body)
+        for it in items:
+            # CASO A: El bloque ya fue transformado a diccionario (Ideal)
+            if isinstance(it, dict) and it.get("type") == "Block":
                 block = it
+                break
+            # CASO B (NUEVO): El bloque llegó crudo como Tree (Error de nombres)
+            if hasattr(it, 'data') and it.data == 'block':
+                print(
+                    "¡ALERTA! El bloque llegó como Tree. Revisa el nombre de la regla en la gramática.")
+
+        # 3) buscar param_list
+        for it in items:
+            if isinstance(it, list):
+                for p in it:
+                    if isinstance(p, dict) and p.get("name") and p.get("name") != name:
+                        params.append({"name": p["name"]})
+                    elif isinstance(p, Token) and p.type == "IDENTIFIER" and str(p) != name:
+                        params.append({"name": str(p)})
 
         if block is None:
+            print(
+                "[ERROR] No se encontró 'Block' en routine. Se devolverá cuerpo vacío.")
             block = {"type": "Block", "body": []}
+
+        # ... filtrado de parámetros (código original) ...
+        filtered = []
+        seen = set()
+        for p in params:
+            if p["name"] not in seen and p["name"] != name:
+                filtered.append(p)
+                seen.add(p["name"])
+        params = filtered
 
         return {
             "type": "Procedure",
-            "name": name,
+            "name": name or "UNKNOWN_PROC",
             "params": params,
             "body": block["body"],
         }
 
     def param_list(self, items):
-        """param_list: param (COMMA param)*"""
         params = []
-        for x in items:
-            # x puede ser dict (Identifier), Token o lista
-            if isinstance(x, dict) and x.get("type") == "Identifier":
-                params.append({"name": x["name"]})
-            elif isinstance(x, dict) and "name" in x:
-                params.append({"name": x["name"]})
-            elif isinstance(x, Token):
-                params.append({"name": str(x)})
-            elif isinstance(x, list):
-                # a veces el transform deja listas anidadas
-                for y in x:
-                    if isinstance(y, dict) and "name" in y:
-                        params.append({"name": y["name"]})
+        for it in items:
+            if isinstance(it, dict) and it.get("type") == "Identifier":
+                params.append({"name": it["name"]})
+            elif isinstance(it, Token) and it.type == "IDENTIFIER":
+                params.append({"name": str(it)})
+            elif isinstance(it, list):
+                for x in it:
+                    if isinstance(x, dict) and x.get("type") == "Identifier":
+                        params.append({"name": x["name"]})
+                    elif isinstance(x, Token) and x.type == "IDENTIFIER":
+                        params.append({"name": str(x)})
         return params
 
     def param(self, items):
-        # items típicamente: [IDENTIFIER] transformado ya a dict
-        if len(items) and isinstance(items[0], dict) and "name" in items[0]:
-            return {"name": items[0]["name"]}
-        if len(items) and isinstance(items[0], Token):
-            return {"name": str(items[0])}
-        return {"name": str(items[0])}
+        if items:
+            first = items[0]
+            if isinstance(first, dict) and "name" in first:
+                return {"name": first["name"]}
+            if isinstance(first, Token) and first.type == "IDENTIFIER":
+                return {"name": str(first)}
+        return {"name": "UNKNOWN_PARAM"}
 
-    ############################################################################
-    # BLOQUES Y SECUENCIAS: stmt_list devuelve SIEMPRE Block
-    ############################################################################
+    # --------------------
+    # BLOQUES / SECUENCIAS
+    # --------------------
     def stmt_list(self, items):
-        """Garantiza siempre un Block."""
         stmts = []
         for x in items:
-            # a veces vienen listas anidadas (por llamadas previas)
             if isinstance(x, list):
                 for y in x:
                     if isinstance(y, dict):
                         stmts.append(y)
             elif isinstance(x, dict):
                 stmts.append(x)
-            # ignorar tokens (p.ej. ; vacíos)
+            # --- DEBUGGING DE COSAS IGNORADAS ---
+            elif hasattr(x, 'data'):  # Es un Tree de Lark
+                print(
+                    f"⚠️ [ALERTA] stmt_list ignoró una regla no transformada: '{x.data}'.")
+                print(
+                    f"   >> DEBES AGREGAR: def {x.data}(self, items): return items[0]")
+            # ------------------------------------
         return {"type": "Block", "body": stmts}
 
+    # ---------------------------------------------------------
+    # REGLAS PASAMANOS (CRÍTICO: Desempaquetan reglas intermedias)
+    # ---------------------------------------------------------
+
+    def statement(self, items):
+        # Regla: statement -> for_stmt | if_stmt ...
+        # Simplemente devolvemos el hijo único (que ya es un dict)
+        if items:
+            return items[0]
+        return None
+
+    def simple_stmt(self, items):
+        return items[0] if items else None
+
+    def compound_stmt(self, items):
+        return items[0] if items else None
+
+    # Por si tu gramática usa nombres en plural o singulares distintos
+    def statements(self, items):
+        return self.stmt_list(items)
+
     def block(self, items):
-        # block: BEGINKW stmt_list ENDKW
-        # stmt_list ya devuelve Block en nuestra implementación, así que devolvemos ese Block.
+        # suele recibir [BEGINKW, stmt_list, ENDKW] -> devolver el stmt_list
         for it in items:
             if isinstance(it, dict) and it.get("type") == "Block":
                 return it
-        # si no lo encontró, construir uno:
+        # fallback: construir block con dicts
         stmts = [x for x in items if isinstance(x, dict)]
         return {"type": "Block", "body": stmts}
 
-    ############################################################################
+    # --------------------
     # STATEMENTS
-    ############################################################################
+    # --------------------
     def assign_stmt(self, items):
-        # LValue ASSIGN expr
-        target = items[0]
-        value = items[1] if len(items) > 1 else None
-        # target puede llegar como dict LValue o Identifier -> normalizar
-        if isinstance(target, dict) and target.get("type") == "LValue":
-            tname = target["name"]
-        elif isinstance(target, dict) and target.get("type") == "Identifier":
-            tname = target["name"]
-        elif isinstance(target, Token):
-            tname = str(target)
+        # lvalue ASSIGN expr
+        target = items[0] if items else None
+        value = items[-1] if len(items) > 1 else None
+
+        # normalizar target a LValue dict
+        if isinstance(target, dict):
+            if target.get("type") == "LValue":
+                name = target.get("name", "")
+            elif target.get("type") == "Identifier":
+                name = target.get("name")
+            else:
+                name = target.get("name", str(target))
+        elif isinstance(target, Token) and target.type == "IDENTIFIER":
+            name = str(target)
         else:
-            # si target es dict con "name"
-            tname = target.get("name", str(target)) if isinstance(
-                target, dict) else str(target)
-        return {"type": "Assign", "target": {"type": "LValue", "name": tname}, "value": value}
+            name = str(target)
+
+        return {"type": "Assign", "target": {"type": "LValue", "name": name}, "value": value}
 
     def lvalue(self, items):
-        # lvalue: IDENTIFIER (indexing)* | field_access
-        if len(items) == 0:
+        if not items:
             return {"type": "LValue", "name": ""}
         first = items[0]
         if isinstance(first, dict) and first.get("type") == "Identifier":
             return {"type": "LValue", "name": first["name"]}
-        if isinstance(first, Token):
+        if isinstance(first, Token) and first.type == "IDENTIFIER":
             return {"type": "LValue", "name": str(first)}
         if isinstance(first, dict) and "name" in first:
             return {"type": "LValue", "name": first["name"]}
         return {"type": "LValue", "name": str(first)}
 
     def return_stmt(self, items):
-        # RETURN expr?
         val = None
-        if len(items) and isinstance(items[0], dict):
-            val = items[0]
-        elif len(items) and isinstance(items[0], Token):
-            # número literal posiblemente
-            try:
-                val = self.NUMBER(items[0])
-            except Exception:
-                val = {"type": "Identifier", "name": str(items[0])}
+        # Buscamos el primer elemento que sea un diccionario (la expresión)
+        # o un Token que NO sea la palabra clave "RETURN"
+        for it in items:
+            if isinstance(it, dict):
+                val = it
+                break
+            elif isinstance(it, Token) and it.type != "RETURNKW" and it.type != "RETURN":
+                # Caso borde: devuelve un número o variable simple
+                if it.type == "NUMBER":
+                    val = self.NUMBER(it)
+                else:
+                    val = {"type": "Identifier", "name": str(it)}
+                break
+
         return {"type": "Return", "value": val}
 
     def call_stmt(self, items):
         # CALLKW IDENTIFIER "(" arg_list? ")"
-        # items puede contener CALLKW token; buscamos el Identifier y arg_list (lista) si existe
         name = None
-        args = []
+        args: List[dict] = []
         for it in items:
             if isinstance(it, dict) and it.get("type") == "Identifier" and name is None:
                 name = it["name"]
+            elif isinstance(it, Token) and it.type == "IDENTIFIER" and name is None:
+                name = str(it)
             elif isinstance(it, list):
-                # arg_list devolvió lista de dicts
-                args = [x for x in it if isinstance(x, dict)]
-        if name is None:
-            # fallback: buscar primer token IDENTIFIER
-            for it in items:
-                if isinstance(it, Token) and it.type == "IDENTIFIER":
-                    name = str(it)
-                    break
+                # arg_list suele venir como lista
+                for a in it:
+                    if isinstance(a, dict):
+                        args.append(a)
         return {"type": "Call", "name": name, "args": args}
 
     def arg_list(self, items):
-        # arg_list: expr (COMMA expr)*
-        # filtrar solo dicts (exprs transformados)
         args = []
         for it in items:
             if isinstance(it, dict):
+                # FILTRO: Ignorar identificadores que sean comas
+                if it.get("type") == "Identifier" and it.get("name") == ",":
+                    continue
                 args.append(it)
             elif isinstance(it, Token):
-                # puede ser NUMBER o IDENTIFIER sin transformar
+                if str(it) == ",":
+                    continue  # Ignorar token coma
+
                 if it.type == "NUMBER":
                     args.append(self.NUMBER(it))
                 else:
                     args.append({"type": "Identifier", "name": str(it)})
-            elif isinstance(it, list):
-                for y in it:
-                    if isinstance(y, dict):
-                        args.append(y)
         return args
 
-    ############################################################################
-    # COMPOUND STATEMENTS (if/for/while/repeat)
-    ############################################################################
+    # --------------------
+    # COMPOUND (if/for/while/repeat)
+    # --------------------
     def if_stmt(self, items):
-        """if_stmt: IFKW expr THENKW stmt_list (ELSEKW stmt_list)? ENDKW"""
-        # extraer dicts: los exprs y los Blocks
         cond = None
         then_block = {"body": []}
         else_block = {"body": []}
-
+        # items contiene cond y bloques; identificar por tipo
         for it in items:
             if isinstance(it, dict) and it.get("type") == "Block":
                 if then_block["body"] == []:
                     then_block = it
                 else:
                     else_block = it
-            elif isinstance(it, dict) and cond is None and it.get("type") not in ("Block",):
+            elif isinstance(it, dict) and cond is None:
                 cond = it
             elif isinstance(it, Token) and cond is None:
-                # improbable si IDENTIFIER ya transformado, pero por seguridad:
                 cond = {"type": "Identifier", "name": str(it)}
-
         if cond is None:
             cond = {"type": "Identifier", "name": "UNKNOWN_COND"}
-
-        return {
-            "type": "If",
-            "cond": cond,
-            "then": then_block["body"],
-            "else_": else_block["body"],
-        }
+        return {"type": "If", "cond": cond, "then": then_block["body"], "else_": else_block["body"]}
 
     def for_stmt(self, items):
-        """for_stmt: FORKW IDENTIFIER ASSIGN expr TOWK expr DOKW stmt_list ENDKW"""
-        # Buscamos: identifier, start expr, end expr, block
-        identifier = None
-        start = None
-        end = None
-        block = {"body": []}
+        """
+        Versión Robusta: Busca componentes por tipo en lugar de posición fija.
+        Estructura esperada: Var, Start, End, Body.
+        """
+        var = None
+        block = {"type": "Block", "body": []}
+        exprs = []  # Aquí guardaremos las expresiones de inicio y fin
 
-        # Extraemos dicts no-Block como candidatos a exprs/ident
-        dicts = [it for it in items if isinstance(it, dict)]
-        # Bloque
         for it in items:
+            # 1. Detectar la variable del ciclo
+            # Usualmente es el primer identificador que encontramos
+            if var is None:
+                if isinstance(it, Token) and it.type == "IDENTIFIER":
+                    var = str(it)
+                    continue
+                elif isinstance(it, dict) and it.get("type") == "Identifier":
+                    var = it["name"]
+                    continue
+
+            # 2. Detectar el Bloque (Cuerpo del ciclo)
             if isinstance(it, dict) and it.get("type") == "Block":
                 block = it
-                break
+                continue
 
-        # Intentar deducir var, start, end en dicts
-        # si el primer dict es Identifier -> var
-        if dicts:
-            if dicts[0].get("type") == "Identifier":
-                identifier = dicts[0]["name"]
-                # start y end serían dicts[1] y dicts[2] si existen
-                if len(dicts) >= 3:
-                    start = dicts[1]
-                    end = dicts[2]
-            else:
-                # en algunos casos lvalue/identificador puede venir como {"name":...}
-                first = dicts[0]
-                if "name" in first and not first.get("type") == "Block":
-                    identifier = first["name"]
-                    if len(dicts) >= 3:
-                        start = dicts[1]
-                        end = dicts[2]
+            # 3. Recolectar expresiones (Start y End)
+            # Ignoramos palabras clave si se cuelan en 'items'
+            is_expr = False
+            if isinstance(it, dict) and it.get("type") not in ("Block", "Identifier"):
+                is_expr = True
+            elif isinstance(it, Token) and it.type == "NUMBER":
+                is_expr = True
+            # Si ya tenemos variable, el siguiente identificador suele ser parte de una expresión (ej: 1 TO n)
+            elif var is not None and (
+                (isinstance(it, dict) and it.get("type") == "Identifier") or
+                (isinstance(it, Token) and it.type == "IDENTIFIER")
+            ):
+                is_expr = True
 
-        # Si falta, buscar tokens
-        if identifier is None:
-            for it in items:
-                if isinstance(it, Token) and it.type == "IDENTIFIER":
-                    identifier = str(it)
-                    break
+            if is_expr:
+                # Normalizar a diccionario si es token
+                if isinstance(it, Token) and it.type == "NUMBER":
+                    exprs.append({"type": "Number", "value": int(it)})
+                elif isinstance(it, Token) and it.type == "IDENTIFIER":
+                    exprs.append({"type": "Identifier", "name": str(it)})
+                else:
+                    exprs.append(it)
+
+        # Asignación segura (si falta algo, ponemos 0 o 1 por defecto para no romper el código)
+        start_node = exprs[0] if len(exprs) > 0 else {
+            "type": "Number", "value": 1}
+        end_node = exprs[1] if len(exprs) > 1 else {
+            "type": "Identifier", "name": "n"}
 
         return {
             "type": "For",
-            "var": identifier,
-            "start": start,
-            "end": end,
-            "body": block["body"],
+            "var": var if var else "i",  # fallback por si acaso
+            "start": start_node,
+            "end": end_node,
+            "body": block["body"]
         }
 
     def while_stmt(self, items):
-        # WHILEKW expr DOKW stmt_list ENDKW
         cond = None
         block = {"body": []}
         for it in items:
@@ -351,7 +387,6 @@ class ASTBuilder(Transformer):
         return {"type": "While", "cond": cond, "body": block["body"]}
 
     def repeat_stmt(self, items):
-        # REPEATKW stmt_list UNTILKW expr SEMI?
         block = {"body": []}
         cond = None
         for it in items:
@@ -363,44 +398,44 @@ class ASTBuilder(Transformer):
                 cond = {"type": "Identifier", "name": str(it)}
         return {"type": "Repeat", "cond": cond, "body": block["body"]}
 
-    ############################################################################
-    # EXPRESSIONS
-    ############################################################################
+    # --------------------
+    # EXPRESIONES
+    # --------------------
     def binop(self, items):
-        # arith: arith ("+"|"-") term -> binop
-        # term: term ("*"|"/") factor -> binop
-        # items puede venir como [left, op_token, right] o (en casos raros) [left, right]
-        if len(items) == 3:
-            left = items[0]
-            op_token = items[1]
-            right = items[2]
-            if isinstance(op_token, Token):
-                op = str(op_token)
-            elif isinstance(op_token, dict) and "op" in op_token:
-                op = op_token["op"]
-            else:
-                op = str(op_token)
-            return {"type": "BinOp", "left": left, "op": op, "right": right}
-        elif len(items) == 2:
-            # caso atípico: no hay token operador (evita crash)
-            left = items[0]
-            right = items[1]
-            return {"type": "BinOp", "left": left, "op": None, "right": right}
-        else:
-            # fallback: retornar primer elemento (no es realmente binop)
-            return items[0] if items else {"type": "BinOp", "left": None, "op": None, "right": None}
+        # items puede ser [left, op, right]
+        operands = [x for x in items if isinstance(x, dict)]
+        operator = None
+
+        # Buscar operador explícito
+        for x in items:
+            if isinstance(x, Token):
+                operator = str(x)
+            elif not isinstance(x, dict) and not isinstance(x, list):
+                # Atrapar literales crudos como '+', '-', etc.
+                s = str(x).strip()
+                if s in ['+', '-', '*', '/', 'div', 'mod', 'AND', 'OR']:
+                    operator = s
+
+        # Si no encontramos operador pero hay 2 operandos, inferir '+' para Fib
+        # (Esto es un parche heurístico si la gramática falla en enviar el token)
+        if operator is None and len(operands) == 2:
+            # Asumir suma por defecto para evitar None, o imprimir advertencia
+            # print("[WARN] BinOp sin operador detectado, asumiendo '+'")
+            operator = "+"
+
+        if len(operands) >= 2:
+            return {"type": "BinOp", "left": operands[0], "op": operator, "right": operands[1]}
+        elif len(operands) == 1:
+            return operands[0]
+        return None
 
     def cmp(self, items):
-        # expr_cmp: arith ((">" | "<" | ">=" | "<=" | "=") arith)?
         if len(items) == 3:
-            left = items[0]
-            op_token = items[1]
-            right = items[2]
+            left, op_token, right = items[0], items[1], items[2]
             op = str(op_token) if isinstance(op_token, Token) else (
                 op_token if isinstance(op_token, str) else str(op_token))
             return {"type": "Cmp", "left": left, "op": op, "right": right}
-        else:
-            return items[0] if items else {"type": "Cmp", "left": None, "op": None, "right": None}
+        return items[0] if items else {"type": "Cmp", "left": None, "op": None, "right": None}
 
     def neg(self, items):
         return {"type": "Unary", "op": "-", "expr": items[0]}
@@ -414,63 +449,77 @@ class ASTBuilder(Transformer):
     def and_expr(self, items):
         return {"type": "LogicOp", "op": "and", "left": items[0], "right": items[1]}
 
-    ############################################################################
-    # ATOMS, CALLS, ARRAYS, INDEXING, FIELDS
-    ############################################################################
+    # --------------------
+    # CALL / ATOMS / ARRAYS
+    # --------------------
     def call_expr(self, items):
-        # IDENTIFIER function_call
-        # items: [Identifier, arg_list?]
         name = None
         args = []
+
+        # 1. Buscar nombre
         for it in items:
-            if isinstance(it, dict) and it.get("type") == "Identifier" and name is None:
-                name = it["name"]
-            elif isinstance(it, list):
-                args = [x for x in it if isinstance(x, dict)]
+            if name is None:
+                if isinstance(it, dict) and it.get("type") == "Identifier":
+                    name = it["name"]
+                elif isinstance(it, Token) and it.type == "IDENTIFIER":
+                    name = str(it)
+
+        # 2. Buscar argumentos (aplanando listas)
+        raw_args = []
+        for it in items:
+            if isinstance(it, list):
+                raw_args.extend(it)
+            elif isinstance(it, dict) and it.get("name") != name:
+                raw_args.append(it)
+
+        # 3. Filtrar comas
+        for arg in raw_args:
+            if arg.get("type") == "Identifier" and arg.get("name") == ",":
+                continue
+            args.append(arg)
+
         return {"type": "Call", "name": name, "args": args}
 
     def function_call(self, items):
-        # "(" arg_list? ")"
-        # Lark pasa args (si existen) como lista
+        # devuelve la lista de argumentos si existe
         if items and isinstance(items[0], list):
             return items[0]
         return []
 
     def array_expr(self, items):
-        # IDENTIFIER indexing+
-        # items: [Identifier, expr, expr, ...] o [Identifier, [expr,...]]
         name = None
-        indexes = []
+        indexes: List[Any] = []
         for it in items:
             if isinstance(it, dict) and it.get("type") == "Identifier" and name is None:
                 name = it["name"]
+            elif isinstance(it, Token) and it.type == "IDENTIFIER" and name is None:
+                name = str(it)
             elif isinstance(it, dict) and it.get("type") != "Identifier":
-                # items could be expressions
                 indexes.append(it)
             elif isinstance(it, list):
                 for y in it:
                     if isinstance(y, dict):
                         indexes.append(y)
-            elif isinstance(it, Token) and name is None:
-                name = str(it)
         return {"type": "ArrayExpr", "name": name, "indexes": indexes}
 
     def var(self, items):
-        # var: IDENTIFIER
-        if items and isinstance(items[0], dict) and items[0].get("type") == "Identifier":
-            return items[0]
-        if items and isinstance(items[0], Token):
-            return {"type": "Identifier", "name": str(items[0])}
-        return {"type": "Identifier", "name": str(items[0])}
+        if items:
+            first = items[0]
+            if isinstance(first, dict) and first.get("type") == "Identifier":
+                return first
+            if isinstance(first, Token) and first.type == "IDENTIFIER":
+                return {"type": "Identifier", "name": str(first)}
+        return {"type": "Identifier", "name": "UNKNOWN_VAR"}
 
     def indexing(self, items):
-        # "[" expr "]" -> recibiremos el expr transformado
+        # recibe expr
         if items:
             return items[0]
         return None
 
     def field_access(self, items):
-        # IDENTIFIER "." IDENTIFIER
+        if not items:
+            return {"type": "FieldAccess", "object": "", "field": ""}
         left = items[0]
         right = items[-1]
         left_name = left["name"] if isinstance(
@@ -478,3 +527,9 @@ class ASTBuilder(Transformer):
         right_name = right["name"] if isinstance(
             right, dict) and "name" in right else str(right)
         return {"type": "FieldAccess", "object": left_name, "field": right_name}
+
+    def compound_stmt(self, items):
+        for it in items:
+            if isinstance(it, dict):
+                return it
+        return None

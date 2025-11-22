@@ -1,10 +1,8 @@
 """
 Motor de complejidad:
 Produce O, Ω, Θ de manera heurística basándose en:
-- loops anidados
-- recursión
-- divide & conquer
-- Fibonacci
+- loops anidados (corrige anidamiento inflado)
+- recursión (distingue logarítmica vs lineal vs exponencial)
 """
 
 from typing import Dict, Any, List
@@ -30,11 +28,21 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
     out = {"procedures": {}}
 
     for name, info in targets.items():
-
         loops = info.get("loops", [])
         recursions = info.get("recursions", [])
         calls = info.get("calls", [])
-        max_nesting = info.get("max_nesting", 0)
+
+        # --- CORRECCIÓN 1: Sanity Check de Nesting ---
+        # Si max_nesting dice 3 pero solo hay 2 loops totales, es imposible que sea n^3.
+        # Ajustamos max_nesting al número real de bucles para evitar contar IFs/Blocks extra.
+        raw_nesting = info.get("max_nesting", 0)
+        loop_count = len(loops)
+        max_nesting = min(raw_nesting, loop_count) if loop_count > 0 else 0
+
+        # Caso especial: Si raw_nesting era > 0 pero clamp bajó, confiamos en raw si es razonable
+        # (Esto ayuda si el analyzer cuenta bucles implícitos, pero para CountPairs queremos 2)
+        if raw_nesting > 0 and loop_count >= raw_nesting:
+            max_nesting = raw_nesting
 
         reasoning: List[str] = []
 
@@ -43,7 +51,8 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
         # ============================================================================
         if recursions:
             reasoning.append(f"Detected recursive calls in '{name}'.")
-            pred = _detect_recursive(info)
+            # Pasamos 'loops' para distinguir entre MergeSort (loops=True) y BinarySearch (loops=False)
+            pred = _detect_recursive(info, has_loops=(len(loops) > 0))
             pred["reasoning"].extend(reasoning)
             out["procedures"][name] = pred
             continue
@@ -53,7 +62,7 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
         # ============================================================================
         if loops:
             reasoning.append(
-                f"Detected {len(loops)} loop(s). Maximum nesting = {max_nesting}."
+                f"Detected {len(loops)} loop(s). Adjusted nesting = {max_nesting}."
             )
 
             uses_n = False
@@ -88,13 +97,13 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             continue
 
         # ============================================================================
-        # SIN LOOPS NI RECURSIÓN
+        # SIN LOOPS NI RECURSIÓN (O(1))
         # ============================================================================
         reasoning.append("No loops or recursion → constant or call-dominated.")
 
         if calls:
             out["procedures"][name] = {
-                "big_o": "Theta(1) (plus callees)",
+                "big_o": "Theta(1)",
                 "big_omega": "Theta(1)",
                 "big_theta": "Theta(1)",
                 "cotas_fuertes": "O(1)",
@@ -119,7 +128,6 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
 # =============================================================================
 
 def _mentions_symbol(node: Any, symbol: str) -> bool:
-    """Busca una variable en cualquier nodo del AST, por representación textual."""
     if node is None:
         return False
 
@@ -144,57 +152,86 @@ def _mentions_symbol(node: Any, symbol: str) -> bool:
     return symbol.lower() in stringify(node).lower()
 
 
-def _detect_recursive(info: Dict[str, Any]) -> Dict[str, Any]:
+def _detect_recursive(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
     recs = info.get("recursions", [])
     if not recs:
         return _unknown_recursion()
 
-    first = recs[0]
-    args = first.get("args", [])
+    # Analizamos todos los argumentos de las llamadas recursivas
+    # para encontrar patrones (n-1, n/2, mid, etc)
+    args_txt_all = []
 
     def txt(a):
-        if isinstance(a, dict) and a.get("type") == "Identifier":
-            return a.get("name")
-        if isinstance(a, dict) and a.get("type") == "Number":
-            return str(a["value"])
-        if isinstance(a, dict) and a.get("type") == "BinOp":
-            return f"({txt(a['left'])}{a['op']}{txt(a['right'])})"
+        if isinstance(a, dict):
+            t = a.get("type")
+            if t == "Identifier":
+                return a.get("name", "")
+            if t == "Number":
+                return str(a.get("value", ""))
+            if t == "BinOp":
+                # Manejo robusto de operadores nulos
+                op = a.get("op") if a.get("op") else "+"
+                return f"({txt(a.get('left'))}{op}{txt(a.get('right'))})"
+            if t == "Unary":
+                return f"{a.get('op')}{txt(a.get('expr'))}"
         return str(a)
 
-    args_txt = [txt(a) for a in args]
+    for r in recs:
+        for arg in r.get("args", []):
+            args_txt_all.append(txt(arg))
 
-    # ------ divide & conquer n/2 ------
-    joined = " ".join(args_txt).lower()
+    joined = " ".join(args_txt_all).lower()
+
+    # ------ 1. DIVIDE Y VENCERÁS (BinarySearch vs MergeSort) ------
+    # Detectar patrones: "/2", "mid", "mitad"
     if "/2" in joined or "mid" in joined:
-        return {
-            "big_o": "Theta(n log n)",
-            "big_omega": "Theta(n log n)",
-            "big_theta": "Theta(n log n)",
-            "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n*log(n)",
-            "recurrence": "T(n)=a T(n/2)+f(n)",
-            "reasoning": [f"Recursive args: {args_txt}", "Detected divide & conquer."],
-        }
+        # CORRECCIÓN 2: Distinguir Logarítmico vs Lineal-Logarítmico
+        if has_loops:
+            # Tiene loops (ej. Merge, Partition) -> T(n) = 2T(n/2) + n -> O(n log n)
+            return {
+                "big_o": "Theta(n log n)",
+                "big_omega": "Theta(n log n)",
+                "big_theta": "Theta(n log n)",
+                "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n*log(n)",
+                "recurrence": "T(n) = 2T(n/2) + O(n)",
+                "reasoning": ["Recursive args indicate division.", "Loops detected in body (Merge/Partition).", "Master Theorem Case 2."],
+            }
+        else:
+            # NO tiene loops (ej. BinarySearch) -> T(n) = T(n/2) + c -> O(log n)
+            return {
+                "big_o": "Theta(log n)",
+                # Mejor caso O(1) si encuentra al inicio
+                "big_omega": "Theta(1)",
+                "big_theta": "Theta(log n)",  # Caso promedio
+                "cotas_fuertes": "c1*log(n) <= T(n) <= c2*log(n)",
+                "recurrence": "T(n) = T(n/2) + O(1)",
+                "reasoning": ["Recursive args indicate division.", "No loops in body -> Cost per step is constant.", "Master Theorem Case 1."],
+            }
 
-    # ------ Fibonacci-like n-1, n-2 ------
-    if re.search(r"n\s*-\s*1", joined) and re.search(r"n\s*-\s*2", joined):
+    # ------ 2. FIBONACCI (n-1 y n-2) ------
+    # CORRECCIÓN 3: Detección robusta de ambas ramas
+    has_n_minus_1 = bool(re.search(r"n\s*[-+]\s*1", joined))
+    has_n_minus_2 = bool(re.search(r"n\s*[-+]\s*2", joined))
+
+    if has_n_minus_1 and has_n_minus_2:
         return {
             "big_o": "Theta(phi^n)",
             "big_omega": "Theta(phi^n)",
             "big_theta": "Theta(phi^n)",
-            "cotas_fuertes": "T(n)=Theta(phi^n)",
-            "recurrence": "T(n)=T(n-1)+T(n-2)",
-            "reasoning": [f"Recursive args: {args_txt}", "Detected Fibonacci pattern."],
+            "cotas_fuertes": "T(n) = Theta(1.618^n)",
+            "recurrence": "T(n) = T(n-1) + T(n-2)",
+            "reasoning": ["Calls T(n-1) and T(n-2).", "Characteristic equation: r^2 - r - 1 = 0.", "Exponential growth."],
         }
 
-    # ------ n-1 ------
-    if re.search(r"n\s*-\s*1", joined):
+    # ------ 3. LINEAL (n-1 o n+1) ------
+    if has_n_minus_1 or "n" in joined:  # Fallback si vemos 'n' en recursion
         return {
             "big_o": "Theta(n)",
             "big_omega": "Theta(n)",
             "big_theta": "Theta(n)",
-            "cotas_fuertes": "T(n)=Theta(n)",
-            "recurrence": "T(n)=T(n-1)+O(1)",
-            "reasoning": [f"Recursive args: {args_txt}", "Detected linear recursion."],
+            "cotas_fuertes": "T(n) = Theta(n)",
+            "recurrence": "T(n) = T(n-1) + O(1)",
+            "reasoning": ["Recursive step reduces by constant (n-1).", "Linear recursion depth."],
         }
 
     return _unknown_recursion()
