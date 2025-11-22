@@ -1,10 +1,7 @@
-// grammar.lark - Gramática Lark para el proyecto (compatible con los tests entregados)
-
-%ignore /[ \t\f\r]+/            // espacios en blanco
-%ignore /\n+/                   // saltos de línea (se manejan por tokens)
+%ignore /[ \t\f\r]+/
+%ignore /\n+/
 %ignore COMMENT
 
-// ----- Terminals -----
 LPAR: "("
 RPAR: ")"
 LSQB: "["
@@ -22,7 +19,6 @@ LT: "<"
 GT: ">"
 LE: "<="
 GE: ">="
-
 ARROW: "<-"
 
 PROCEDURE: "PROCEDURE"
@@ -40,14 +36,13 @@ UNTILKW: "UNTIL"
 RETURNKW: "RETURN"
 CALLKW: "CALL"
 
-COMMENT: "►" /[^\n]*/                // comentario con el símbolo ►
-%ignore /\/\/[^\n]*/                 // también C++ style comments
+COMMENT: "►" /[^\n]*/
+%ignore /\/\/[^\n]*/
 
-// IDENTIFIERS and NUMBERS
 %import common.CNAME -> IDENTIFIER
 %import common.INT -> NUMBER
+%import common.WS_INLINE
 
-// ----- Start -----
 start: program
 
 program: (routine)*
@@ -64,13 +59,13 @@ stmt_list: (statement)*
 statement: simple_stmt
          | compound_stmt
 
-// ----- Simple statements (terminated by ;) -----
 simple_stmt: assign_stmt SEMI
            | return_stmt SEMI
            | call_stmt SEMI
            | SEMI
 
 assign_stmt: lvalue ASSIGN expr
+
 lvalue: IDENTIFIER (indexing)*
       | field_access
 
@@ -80,9 +75,8 @@ call_stmt: CALLKW IDENTIFIER "(" arg_list? ")"
 
 arg_list: expr (COMMA expr)*
 
-return_stmt: RETURNKW expr
+return_stmt: RETURNKW expr?
 
-// ----- Compound / control statements -----
 compound_stmt: if_stmt
              | for_stmt
              | while_stmt
@@ -97,7 +91,6 @@ while_stmt: WHILEKW expr DOKW stmt_list ENDKW
 
 repeat_stmt: REPEATKW stmt_list UNTILKW expr SEMI?
 
-// ----- Expressions -----
 ?expr: expr_or
 
 ?expr_or: expr_or "or" expr_and  -> or_expr
@@ -106,21 +99,31 @@ repeat_stmt: REPEATKW stmt_list UNTILKW expr SEMI?
 ?expr_and: expr_and "and" expr_cmp -> and_expr
          | expr_cmp
 
-?expr_cmp: arith_expr ((">" | "<" | ">=" | "<=" | "=") arith_expr)?
-arith_expr: arith_expr ("+" | "-") term   -> binop
-          | term
+?expr_cmp: arith ((">" | "<" | ">=" | "<=" | "=") arith)?
 
-term: term ("*" | "/") factor              -> binop
-    | factor
+?arith: arith ("+" | "-") term   -> binop
+      | term
 
-?factor: NUMBER
-       | IDENTIFIER function_call
-       | IDENTIFIER indexing                  -> array_access
-       | IDENTIFIER                            -> var
-       | "(" expr ")"
+?term: term ("*" | "/") factor   -> binop
+     | factor
+
+?factor: unary
+       | atom
+
+unary: "-" factor -> neg
+     | "+" factor -> pos
+
+?atom: NUMBER
+     | call_expr
+     | array_expr
+     | var
+     | "(" expr ")"
+
+call_expr: IDENTIFIER function_call
+array_expr: IDENTIFIER indexing+
+var: IDENTIFIER
 
 function_call: "(" arg_list? ")"
-indexing: ("[" expr "]")+
+indexing: "[" expr "]"
 
-// ----- Helpers for tokenizer friendliness -----
-%ignore /[ \t\f\r]+/    // spaces
+%ignore WS_INLINE
