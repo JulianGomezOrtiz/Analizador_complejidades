@@ -1,121 +1,90 @@
-# src/analyzer/static_analyzer.py
-"""
-Analizador estático que recorre el AST y extrae:
-- loops (anidados, límites simbólicos)
-- recursions (llamadas a la misma procedure)
-- llamadas (CALL)
-- variables y sus tipos/uso (simple heurística)
-Devuelve un "context" consumible por complexity_engine.
-"""
-from typing import Dict, Any, List, Tuple, Set
-from collections import defaultdict
+from typing import Dict, Any, List
 
 
 def analyze_ast_for_patterns(ast: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extrae información estructurada del AST.
+    procedures = {}
+    if not ast or not isinstance(ast, dict):
+        return {"procedures": {}}
 
-    Devuelve:
-      {
-        "procedures": {
-            proc_name: {
-                "loops": [ { "type":"For"/"While"/"Repeat", "var":..., "start":..., "end":..., "body":..., "nesting_level":k } ],
-                "recursions": [ { "call_node":..., "args":... } ],
-                "calls": [ { "name":..., "args":... } ],
-                "max_nesting": int,
-                "variables": set(),
-                "annotations": {...}
-            }
-        },
-        "global": {...}
-      }
-    """
-    result = {"procedures": {}, "global": {}}
+    procs_list = ast.get("procedures", [])
 
-    procs = ast.get("procedures", [])
-    for proc in procs:
-        name = proc.get("name")
-        ctx = {
-            "loops": [],
-            "recursions": [],
-            "calls": [],
-            "max_nesting": 0,
-            "variables": set(),
-            "annotations": {},
+    for proc in procs_list:
+        proc_name = proc.get("name")
+        body = proc.get("body", [])
+
+        analyzer = ProcAnalyzer(proc_name)
+        analyzer.visit(body)
+
+        procedures[proc_name] = {
+            "loops": analyzer.loops,
+            "recursions": analyzer.recursions,
+            "calls": analyzer.calls,
+            "max_nesting": analyzer.max_nesting
         }
 
-        # walk procedure body
-        def walk_statements(stmts, nesting=0):
-            ctx["max_nesting"] = max(ctx["max_nesting"], nesting)
-            for s in stmts:
-                if s is None:
-                    continue
-                stype = s.get("type")
-                if stype == "For":
-                    ctx["loops"].append(
-                        {
-                            "type": "For",
-                            "var": s.get("var"),
-                            "start": s.get("start"),
-                            "end": s.get("end"),
-                            "body": s.get("body"),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk_statements(s.get("body", []), nesting + 1)
-                elif stype == "While":
-                    ctx["loops"].append(
-                        {
-                            "type": "While",
-                            "cond": s.get("cond"),
-                            "body": s.get("body"),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk_statements(s.get("body", []), nesting + 1)
-                elif stype == "Repeat":
-                    ctx["loops"].append(
-                        {
-                            "type": "Repeat",
-                            "cond": s.get("cond"),
-                            "body": s.get("body"),
-                            "nesting": nesting + 1,
-                        }
-                    )
-                    walk_statements(s.get("body", []), nesting + 1)
-                elif stype == "If":
-                    # then
-                    walk_statements(s.get("then", []), nesting + 1)
-                    walk_statements(s.get("else_", []), nesting + 1)
-                elif stype == "Call":
-                    cname = s.get("name")
-                    ctx["calls"].append(
-                        {"name": cname, "args": s.get("args", [])})
-                    # detect recursion: call to same proc name
-                    if cname == name:
-                        ctx["recursions"].append(
-                            {"call": s, "args": s.get("args", [])})
-                elif stype == "Assign":
-                    # collect variables used
-                    tgt = s.get("target", {})
-                    if tgt.get("type") == "LValue":
-                        ctx["variables"].add(tgt.get("name"))
-                elif stype == "Return":
-                    pass
-                else:
-                    # fallback: if body field exists, try to walk it
-                    if isinstance(s, dict):
-                        for v in s.values():
-                            if isinstance(v, list):
-                                walk_statements(v, nesting)
+    return {"procedures": procedures}
 
-        body = proc.get("body", [])
-        walk_statements(body, nesting=0)
 
-        # simple annotations: detect nested loops depth
-        ctx["annotations"]["num_loops"] = len(ctx["loops"])
-        ctx["annotations"]["num_calls"] = len(ctx["calls"])
-        ctx["variables"] = sorted(list(ctx["variables"]))
-        result["procedures"][name] = ctx
+class ProcAnalyzer:
+    def __init__(self, proc_name):
+        self.proc_name = proc_name
+        self.loops = []
+        self.recursions = []
+        self.calls = []
+        self.max_nesting = 0
+        self.current_nesting = 0
 
-    return result
+    def visit(self, node):
+        # 1. Iterar listas (ej: body, args)
+        if isinstance(node, list):
+            for item in node:
+                self.visit(item)
+            return
+
+        # 2. Ignorar primitivos
+        if not isinstance(node, dict):
+            return
+
+        typ = node.get("type")
+
+        # --- DETECTAR BUCLES ---
+        is_loop = typ in ("For", "While", "Repeat")
+        if is_loop:
+            self.current_nesting += 1
+            self.max_nesting = max(self.max_nesting, self.current_nesting)
+
+            if typ == "For":
+                self.loops.append({
+                    "type": "For",
+                    "var": node.get("var"),
+                    "start": node.get("start"),
+                    "end": node.get("end"),
+                    "nesting": self.current_nesting
+                })
+            else:
+                self.loops.append(
+                    {"type": typ, "nesting": self.current_nesting})
+
+        # --- DETECTAR LLAMADAS ---
+        if typ == "Call":
+            name = node.get("name")
+            args = node.get("args", [])
+            if name == self.proc_name:
+                self.recursions.append({"args": args})
+            else:
+                self.calls.append({"name": name, "args": args})
+            # No retornamos aquí, dejamos que el crawler visite los argumentos abajo
+
+        # --- CRAWLER UNIVERSAL (Fuerza Bruta) ---
+        # Visitamos TODOS los valores del diccionario, sin importar la clave.
+        # Esto entra en 'value', 'left', 'right', 'cond', 'then', 'body', 'args', etc.
+        for key, value in node.items():
+            # Evitamos metadatos simples para eficiencia
+            if key in ("type", "name", "var", "op", "param_type"):
+                continue
+
+            self.visit(value)
+
+        # Restaurar nesting
+        if is_loop:
+            self.current_nesting -= 1

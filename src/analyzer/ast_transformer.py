@@ -1,255 +1,178 @@
-# src/analyzer/ast_transformer.py
-"""
-Transformador Lark -> AST (estructura de diccionarios).
-Este AST es intencionalmente simple (serializable a JSON).
-"""
-from lark import Transformer, Tree, Token
-from typing import Any, Dict, List, Union
-
-# Helpers para los nodos AST
+from lark import Transformer, Token
 
 
-def make_node(kind: str, **kwargs) -> Dict[str, Any]:
-    node = {"type": kind}
-    node.update(kwargs)
-    return node
+def tree_to_ast(tree):
+    return ASTBuilder().transform(tree)
 
 
-class PseudoTransformer(Transformer):
-    """
-    Transformer que convierte el parse tree de Lark en un AST serializable.
-    - produce diccionarios simples
-    - mantiene posiciones si están presentes
-    """
+class ASTBuilder(Transformer):
+    # --- UTILS ---
+    def _get_name(self, item):
+        """Extrae el nombre limpio de un token o un diccionario Identifier"""
+        if isinstance(item, dict) and item.get("type") == "Identifier":
+            return item["name"]
+        return str(item)
 
+    # --- ESTRUCTURA GENERAL ---
     def start(self, items):
-        # items: sequence of decl_or_proc
-        program = {"type": "Program", "declarations": [], "procedures": []}
+        classes = [x for x in items if isinstance(
+            x, dict) and x.get("type") == "Class"]
+        procs = [x for x in items if isinstance(
+            x, dict) and x.get("type") == "Procedure"]
+        return {"type": "Program", "classes": classes, "procedures": procs}
+
+    # --- CLASES ---
+    def class_decl(self, items):
+        name = None
+        attrs = []
         for it in items:
-            if it["type"] == "VarDecl":
-                program["declarations"].append(it)
-            elif it["type"] == "Procedure":
-                program["procedures"].append(it)
-            else:
-                # fallback
-                program.setdefault("others", []).append(it)
-        return program
+            if name is None:
+                # Ignorar tokens de estructura, buscar el ID
+                if isinstance(it, (Token, dict)):
+                    s = self._get_name(it)
+                    if s not in ("Clase", "{", "}"):
+                        name = s
+            if isinstance(it, list):
+                attrs = it
+        return {"type": "Class", "name": name, "attributes": attrs}
 
-    ########################################################
-    # Declarations and procedures
-    ########################################################
-    def var_decl(self, items):
-        # items[0] is var_list
-        return make_node("VarDecl", vars=items[0])
+    def attribute_list(self, items):
+        return [self._get_name(it) for it in items]
 
-    def var_list(self, items):
-        return items
+    def object_decl(self, items):
+        return {"type": "ObjectDecl", "name": self._get_name(items[0])}
 
-    def var_item(self, items):
-        # IDENTIFIER with optional ranges
-        name = str(items[0])
-        dims = []
-        for el in items[1:]:
-            dims.append(el)
-        return {"name": name, "dims": dims}
+    # --- PROCEDIMIENTOS ---
+    def procedure(self, items):
+        name = None
+        params = []
+        body = []
+        for it in items:
+            if name is None:
+                s = self._get_name(it)
+                if s != "PROCEDURE":
+                    name = s
+            elif isinstance(it, list) and not body:
+                params = it
+            elif isinstance(it, dict) and it.get("type") == "Block":
+                body = it["body"]
+        return {"type": "Procedure", "name": name or "UNKNOWN", "params": params, "body": body}
 
-    def routine(self, items):
-        # "PROCEDURE" IDENTIFIER "(" param_list? ")" block "END" ...
-        # items = [IDENTIFIER, param_list? , block]
-        name = str(items[0])
-        if isinstance(items[1], list):
-            params = items[1]
-            block = items[2]
-        else:
-            params = []
-            block = items[1]
-        return make_node("Procedure", name=name, params=params, body=block["body"])
-
-    def param_list(self, items):
-        return items
+    def param_list(self, items): return items
 
     def param(self, items):
-        # either IDENTIFIER or "Clase" IDENTIFIER
-        if len(items) == 1:
-            return {"name": str(items[0]), "type": "var"}
-        else:
-            # Clase IDENTIFIER
-            return {"name": str(items[1]), "type": "class"}
+        if len(items) == 2:
+            return {"name": self._get_name(items[1]), "param_type": self._get_name(items[0])}
+        return {"name": self._get_name(items[0]), "param_type": "any"}
 
+    def type_spec(self, items): return self._get_name(items[0])
+
+    # --- BLOQUES ---
     def block(self, items):
-        # items -> statements
+        stmts = items[0] if items else []
+        return stmts if isinstance(stmts, dict) else {"type": "Block", "body": stmts}
+
+    def stmt_list(self, items):
         stmts = []
-        for it in items:
-            if it is None:
-                continue
-            if isinstance(it, list):
-                stmts.extend(it)
-            else:
-                stmts.append(it)
+        for x in items:
+            if isinstance(x, dict):
+                stmts.append(x)
+            elif isinstance(x, list):
+                stmts.extend(x)
         return {"type": "Block", "body": stmts}
 
-    ########################################################
-    # Statements
-    ########################################################
-    def statement(self, items):
-        return items[0] if items else None
+    def statement(self, items): return items[0] if items else None
 
+    # --- SENTENCIAS ---
     def assign_stmt(self, items):
-        lvalue, _, expr = items
-        return make_node("Assign", target=lvalue, value=expr)
-
-    def lvalue(self, items):
-        # IDENTIFIER with optional accesses
-        name = str(items[0])
-        accesses = []
-        for acc in items[1:]:
-            accesses.append(acc)
-        node = {"name": name}
-        if accesses:
-            node["accesses"] = accesses
-        return make_node("LValue", **node)
+        return {"type": "Assign", "target": items[0], "value": items[-1]}
 
     def if_stmt(self, items):
-        # IF (cond) THEN block (ELSE block)? END
-        cond = items[0]
-        then_block = items[1]
-        else_block = items[2] if len(items) > 2 else {
-            "type": "Block", "body": []}
-        return make_node("If", cond=cond, then=then_block["body"], else_=else_block["body"])
+        return {"type": "If", "cond": items[0], "then": items[1]["body"], "else_": items[2]["body"] if len(items) > 2 else []}
 
     def while_stmt(self, items):
-        cond = items[0]
-        block = items[1]
-        return make_node("While", cond=cond, body=block["body"])
-
-    def for_stmt(self, items):
-        # FOR IDENT ASSIGN expr TO expr DO block END
-        var = str(items[0])
-        start = items[1]
-        end = items[2]
-        block = items[3]
-        return make_node("For", var=var, start=start, end=end, body=block["body"])
+        return {"type": "While", "cond": items[0], "body": items[1]["body"]}
 
     def repeat_stmt(self, items):
-        # REPEAT statement* UNTIL (expr)
-        # items: [stmt1, stmt2, ..., expr]
-        *stmts, cond = items
-        body = []
-        for s in stmts:
-            if s is None:
-                continue
-            if isinstance(s, list):
-                body.extend(s)
-            else:
-                body.append(s)
-        return make_node("Repeat", cond=cond, body=body)
+        return {"type": "Repeat", "body": items[0]["body"], "cond": items[1]}
 
-    def call_stmt(self, items):
-        name = str(items[0])
-        args = items[1] if len(items) > 1 else []
-        return make_node("Call", name=name, args=args)
-
-    def arg_list(self, items):
-        return items
+    def for_stmt(self, items):
+        # items: [ID, ASSIGN, start, TO, end, DO, block] (Lark puede filtrar algunos)
+        # Buscamos el nombre de la variable (el primer identificador)
+        var_name = self._get_name(items[0])
+        start = items[2]
+        end = items[3]
+        body = items[4]["body"]
+        return {"type": "For", "var": var_name, "start": start, "end": end, "body": body}
 
     def return_stmt(self, items):
-        return make_node("Return", value=items[0] if items else None)
+        return {"type": "Return", "value": items[0] if items else None}
 
-    ########################################################
-    # Expressions
-    ########################################################
-    def expr(self, items):
-        # direct passthrough
-        return items[0] if items else None
+    def call_stmt(self, items):
+        # AQUÍ ESTABA EL ERROR: Usábamos str(items[0]) que podía ser un dict stringificado
+        name = self._get_name(items[0])
+        args = items[1] if len(items) > 1 else []
+        return {"type": "Call", "name": name, "args": args}
 
-    def or_expr(self, items):
+    # --- EXPRESIONES ---
+    def expr(self, items): return items[0]
+    def logic_or(self, items): return self._binop_chain(items)
+    def logic_and(self, items): return self._binop_chain(items)
+    def comp(self, items): return self._binop_chain(items)
+    def term(self, items): return self._binop_chain(items)
+    def factor(self, items): return self._binop_chain(items)
+
+    def atom(self, items): return items[0]
+
+    def unary(self, items):
         if len(items) == 1:
             return items[0]
-        return make_node("LogicOr", operands=items)
+        return {"type": "Unary", "op": self._get_name(items[0]), "expr": items[1]}
 
-    def and_expr(self, items):
-        if len(items) == 1:
-            return items[0]
-        return make_node("LogicAnd", operands=items)
+    def floor_op(self, items): return {
+        "type": "Unary", "op": "floor", "expr": items[0]}
 
-    def not_(self, items):
-        # items[0] is inner
-        return make_node("Not", operand=items[0])
+    def ceil_op(self, items): return {
+        "type": "Unary", "op": "ceil", "expr": items[0]}
 
-    def comparison(self, items):
+    def _binop_chain(self, items):
         if len(items) == 1:
             return items[0]
         left = items[0]
-        op = str(items[1].children[0]) if isinstance(
-            items[1], Tree) else str(items[1])
-        right = items[2]
-        return make_node("BinOp", op=op, left=left, right=right)
+        for i in range(1, len(items), 2):
+            op = self._get_name(items[i])
+            right = items[i+1]
+            left = {"type": "BinOp", "left": left, "op": op, "right": right}
+        return left
 
-    def arith(self, items):
-        if len(items) == 1:
-            return items[0]
-        # binary left associative
-        node = items[0]
-        i = 1
-        while i < len(items):
-            op = items[i]
-            right = items[i + 1]
-            node = make_node("BinOp", op=str(op), left=node, right=right)
-            i += 2
-        return node
-
-    def term(self, items):
-        return self.arith(items)
-
-    def factor(self, items):
-        # items could be NUMBER, IDENTIFIER, call_expr, etc.
-        return items[0]
-
-    def call_expr(self, items):
-        name = str(items[0])
-        args = items[1] if len(items) > 1 else []
-        return make_node("CallExpr", name=name, args=args)
+    def lvalue(self, items):
+        parts = [self._get_name(it) for it in items]
+        return {"type": "LValue", "name": ".".join(parts)}
 
     def array_access(self, items):
-        name = str(items[0])
-        idx = items[1]
-        return make_node("ArrayAccess", array=name, index=idx)
+        first = items[0]
+        name = self._get_name(first)
+        index = items[1]
+        return {"type": "ArrayAccess", "name": name, "index": index}
 
-    def field_access(self, items):
-        obj = str(items[0])
-        field = str(items[1])
-        return make_node("FieldAccess", object=obj, field=field)
+    def length_func(self, items):
+        return {"type": "Call", "name": "length", "args": [{"type": "Identifier", "name": self._get_name(items[0])}]}
 
-    def IDENTIFIER(self, token):
-        return make_node("Identifier", name=str(token))
+    def call_expr(self, items):
+        # AQUÍ TAMBIÉN: Usar _get_name
+        name = self._get_name(items[0])
+        args = items[1] if len(items) > 1 else []
+        return {"type": "Call", "name": name, "args": args}
 
-    def NUMBER(self, token):
-        return make_node("Number", value=int(token))
+    def arg_list(self, items):
+        return [x for x in items if isinstance(x, dict)]
 
-    def STRING(self, token):
-        s = str(token)[1:-1]
-        return make_node("String", value=s)
+    # --- TOKENS ---
+    def NUMBER(self, token): return {"type": "Number", "value": float(
+        token) if '.' in token else int(token)}
+    def IDENTIFIER(self, token): return {
+        "type": "Identifier", "name": str(token)}
 
-    def ASSIGN(self, token):
-        return str(token)
-
-    def __default__(self, data, children, meta):
-        # fallback for unhandled nodes: return children if single else a node
-        if len(children) == 1:
-            return children[0]
-        return children
-
-
-def tree_to_ast(tree: Tree) -> Dict:
-    """
-    Convierte un lark.Tree (parse result) a AST serializable.
-
-    Args:
-        tree: lark.Tree
-
-    Returns:
-        dict representando el programa (Program)
-    """
-    transformer = PseudoTransformer()
-    ast = transformer.transform(tree)
-    return ast
+    def null_val(self, _): return {"type": "Literal", "value": "NULL"}
+    def true_val(self, _): return {"type": "Literal", "value": True}
+    def false_val(self, _): return {"type": "Literal", "value": False}
