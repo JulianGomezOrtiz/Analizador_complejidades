@@ -1,129 +1,101 @@
-%ignore /[ \t\f\r]+/
-%ignore /\n+/
-%ignore COMMENT
+// ==========================================
+// GRAMÁTICA PASCAL-LIKE (CORREGIDA)
+// ==========================================
 
-LPAR: "("
-RPAR: ")"
-LSQB: "["
-RSQB: "]"
-COMMA: ","
-SEMI: ";"
-COLON: ":"
-ASSIGN: ":="
-PLUS: "+"
-MINUS: "-"
-MUL: "*"
-DIV: "/"
-EQ: "="
-LT: "<"
-GT: ">"
-LE: "<="
-GE: ">="
-ARROW: "<-"
+start: class_decl* procedure*
 
-PROCEDURE: "PROCEDURE"
-BEGINKW: "BEGIN"
-ENDKW: "END"
-IFKW: "IF"
-THENKW: "THEN"
-ELSEKW: "ELSE"
-FORKW: "FOR"
-TOWK: "TO"
-DOKW: "DO"
-WHILEKW: "WHILE"
-REPEATKW: "REPEAT"
-UNTILKW: "UNTIL"
-RETURNKW: "RETURN"
-CALLKW: "CALL"
+// --- CLASES ---
+class_decl: "Clase" IDENTIFIER "{" attribute_list "}"
+attribute_list: IDENTIFIER*
 
-COMMENT: "►" /[^\n]*/
-%ignore /\/\/[^\n]*/
+// --- PROCEDIMIENTOS ---
+procedure: "PROCEDURE" IDENTIFIER "(" param_list? ")" block
 
-%import common.CNAME -> IDENTIFIER
-%import common.INT -> NUMBER
-%import common.WS_INLINE
+// --- PARÁMETROS ---
+param_list: param ("," param)*
+param: (type_spec)? IDENTIFIER
+type_spec: "Clase" | "int" | "float" | "list"
 
-start: program
+// --- BLOQUE ---
+block: "BEGIN" stmt_list "END"
 
-program: (routine)*
+stmt_list: statement*
 
-routine: PROCEDURE IDENTIFIER "(" param_list? ")" block
+statement: assign_stmt ";"
+         | if_stmt
+         | for_stmt
+         | while_stmt
+         | repeat_stmt
+         | return_stmt ";"
+         | call_stmt ";"
+         | var_decl ";"
 
-param_list: param (COMMA param)*
-param: IDENTIFIER
+// --- VARIABLES LOCALES ---
+var_decl: "Clase" IDENTIFIER  -> object_decl
+        | type_spec IDENTIFIER ("[" expr "]")? -> local_decl
+        | IDENTIFIER "[" expr "]" -> vector_decl
 
-block: BEGINKW stmt_list ENDKW
+// --- CONTROL DE FLUJO ---
+if_stmt: "IF" condition "THEN" block ("ELSE" block)?
+while_stmt: "WHILE" condition "DO" block
+for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block
+repeat_stmt: "REPEAT" stmt_list "UNTIL" condition
 
-stmt_list: (statement)*
-
-statement: simple_stmt
-         | compound_stmt
-
-simple_stmt: assign_stmt SEMI
-           | return_stmt SEMI
-           | call_stmt SEMI
-           | SEMI
-
+// --- ASIGNACIÓN ---
 assign_stmt: lvalue ASSIGN expr
 
-lvalue: IDENTIFIER (indexing)*
-      | field_access
+// --- LLAMADAS ---
+call_stmt: "CALL" IDENTIFIER "(" arg_list? ")"
+return_stmt: "RETURN" expr?
 
-field_access: IDENTIFIER "." IDENTIFIER
+// --- EXPRESIONES ---
+expr: logic_or
 
-call_stmt: CALLKW IDENTIFIER "(" arg_list? ")"
+logic_or: logic_and ("or" logic_and)*
+logic_and: comp ("and" comp)*
+comp: term (cmp_op term)*
 
-arg_list: expr (COMMA expr)*
+term: factor (add_op factor)*
 
-return_stmt: RETURNKW expr?
+// --- AQUÍ ESTABA EL ERROR: AHORA ESTÁN SEPARADOS ---
+factor: unary (mul_op unary)*
 
-compound_stmt: if_stmt
-             | for_stmt
-             | while_stmt
-             | repeat_stmt
-             | block
+unary: ("-" | "not") unary | atom
 
-if_stmt: IFKW expr THENKW stmt_list (ELSEKW stmt_list)? ENDKW
+atom: NUMBER
+    | call_expr
+    | array_access
+    | lvalue
+    | "(" expr ")"
+    | length_func
+    | "NULL" -> null_val
+    | "T" -> true_val
+    | "F" -> false_val
 
-for_stmt: FORKW IDENTIFIER ASSIGN expr TOWK expr DOKW stmt_list ENDKW
+// --- ACCESO A DATOS ---
+lvalue: IDENTIFIER ("." IDENTIFIER)*
 
-while_stmt: WHILEKW expr DOKW stmt_list ENDKW
+// Soporte para A[i][j] (uno o más índices)
+array_access: IDENTIFIER ("[" expr (".." expr)? "]")+
 
-repeat_stmt: REPEATKW stmt_list UNTILKW expr SEMI?
+length_func: "length" "(" IDENTIFIER ")"
+call_expr: IDENTIFIER "(" arg_list? ")"
+arg_list: expr ("," expr)*
 
-?expr: expr_or
+// --- OPERADORES Y TOKENS ---
+!cmp_op: "<" | ">" | "<=" | ">=" | "=" | "<>" | "≠" | "≤" | "≥"
+!add_op: "+" | "-"
+!mul_op: "*" | "/" | "div" | "mod"
 
-?expr_or: expr_or "or" expr_and  -> or_expr
-        | expr_and
+condition: expr
 
-?expr_and: expr_and "and" expr_cmp -> and_expr
-         | expr_cmp
+ASSIGN: "🡨" | "<-"
+IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_]*/
+NUMBER: /\d+(\.\d+)?/
+COMMENT: "►" /[^\n]*/
 
-?expr_cmp: arith ((">" | "<" | ">=" | "<=" | "=") arith)?
-
-?arith: arith ("+" | "-") term   -> binop
-      | term
-
-?term: term ("*" | "/") factor   -> binop
-     | factor
-
-?factor: unary
-       | atom
-
-unary: "-" factor -> neg
-     | "+" factor -> pos
-
-?atom: NUMBER
-     | call_expr
-     | array_expr
-     | var
-     | "(" expr ")"
-
-call_expr: IDENTIFIER function_call
-array_expr: IDENTIFIER indexing+
-var: IDENTIFIER
-
-function_call: "(" arg_list? ")"
-indexing: "[" expr "]"
-
-%ignore WS_INLINE
+%ignore " "
+%ignore "\t"
+%ignore "\n"
+%ignore "\r"
+%ignore COMMENT

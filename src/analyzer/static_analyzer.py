@@ -2,22 +2,16 @@ from typing import Dict, Any, List
 
 
 def analyze_ast_for_patterns(ast: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Recorre el AST para extraer métricas clave:
-    - Bucles (anidamiento, rangos)
-    - Recursión (llamadas a sí mismo)
-    - Llamadas externas
-    """
     procedures = {}
+    if not ast or not isinstance(ast, dict):
+        return {"procedures": {}}
 
-    # Si el AST es una lista (caso raro), buscar dicts dentro
-    procs_list = ast.get("procedures", []) if isinstance(ast, dict) else []
+    procs_list = ast.get("procedures", [])
 
     for proc in procs_list:
         proc_name = proc.get("name")
         body = proc.get("body", [])
 
-        # Analizadores de estado
         analyzer = ProcAnalyzer(proc_name)
         analyzer.visit(body)
 
@@ -41,22 +35,24 @@ class ProcAnalyzer:
         self.current_nesting = 0
 
     def visit(self, node):
+        # 1. Iterar listas (ej: body, args)
         if isinstance(node, list):
-            for stmt in node:
-                self.visit(stmt)
+            for item in node:
+                self.visit(item)
             return
 
+        # 2. Ignorar primitivos
         if not isinstance(node, dict):
             return
 
         typ = node.get("type")
 
-        # --- MANEJO DE BUCLES ---
-        if typ in ("For", "While", "Repeat"):
+        # --- DETECTAR BUCLES ---
+        is_loop = typ in ("For", "While", "Repeat")
+        if is_loop:
             self.current_nesting += 1
             self.max_nesting = max(self.max_nesting, self.current_nesting)
 
-            # Guardar info del loop
             if typ == "For":
                 self.loops.append({
                     "type": "For",
@@ -69,19 +65,7 @@ class ProcAnalyzer:
                 self.loops.append(
                     {"type": typ, "nesting": self.current_nesting})
 
-            # Visitar cuerpo
-            self.visit(node.get("body", []))
-            self.current_nesting -= 1
-            return
-
-        # --- MANEJO DE CONTROL DE FLUJO (IF) ---
-        if typ == "If":
-            # No aumentamos nesting de bucles, pero visitamos las ramas
-            self.visit(node.get("then", []))
-            self.visit(node.get("else_", []))
-            return
-
-        # --- MANEJO DE LLAMADAS (RECURSIVAS O EXTERNAS) ---
+        # --- DETECTAR LLAMADAS ---
         if typ == "Call":
             name = node.get("name")
             args = node.get("args", [])
@@ -89,27 +73,18 @@ class ProcAnalyzer:
                 self.recursions.append({"args": args})
             else:
                 self.calls.append({"name": name, "args": args})
-            # Revisar argumentos por si hay llamadas anidadas: f(g(x))
-            for arg in args:
-                self.visit(arg)
-            return
+            # No retornamos aquí, dejamos que el crawler visite los argumentos abajo
 
-        # --- EXPRESIONES Y OTROS NODOS ---
-        # Hay que visitar hijos para encontrar llamadas ocultas (ej: Return Fib(n-1))
+        # --- CRAWLER UNIVERSAL (Fuerza Bruta) ---
+        # Visitamos TODOS los valores del diccionario, sin importar la clave.
+        # Esto entra en 'value', 'left', 'right', 'cond', 'then', 'body', 'args', etc.
+        for key, value in node.items():
+            # Evitamos metadatos simples para eficiencia
+            if key in ("type", "name", "var", "op", "param_type"):
+                continue
 
-        if typ == "Return":
-            self.visit(node.get("value"))
+            self.visit(value)
 
-        elif typ == "Assign":
-            self.visit(node.get("value"))
-
-        elif typ == "BinOp":
-            self.visit(node.get("left"))
-            self.visit(node.get("right"))
-
-        elif typ == "Unary":
-            self.visit(node.get("expr"))
-
-        # Caso general: Si tiene cuerpo o lista, visítalos
-        if "body" in node:
-            self.visit(node["body"])
+        # Restaurar nesting
+        if is_loop:
+            self.current_nesting -= 1
