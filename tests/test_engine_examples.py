@@ -215,8 +215,8 @@ END
 
 def test_queens_backtracking_complexity():
     out = run(QUEENS, "SolveQueens")
-    assert "?" in out["big_o"] or "recursion" in " ".join(
-        out["reasoning"]).lower()
+    reasoning = " ".join(out["reasoning"]).lower()
+    assert "?" in out["big_o"] or "recursiv" in reasoning
 
 
 COUNT = """

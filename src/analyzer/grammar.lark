@@ -42,7 +42,7 @@ for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block
 repeat_stmt: "REPEAT" stmt_list "UNTIL" condition
 
 // --- ASIGNACIÓN ---
-assign_stmt: lvalue ASSIGN expr
+assign_stmt: (lvalue | array_access) ASSIGN expr
 
 // --- LLAMADAS ---
 call_stmt: "CALL" IDENTIFIER "(" arg_list? ")"
