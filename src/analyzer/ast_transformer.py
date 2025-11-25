@@ -136,13 +136,22 @@ class ASTBuilder(Transformer):
         "type": "Unary", "op": "ceil", "expr": items[0]}
 
     def _binop_chain(self, items):
+        # Caso 0: Lista vacía (Defensivo)
+        if not items:
+            return None
+
+        # Caso 1: Solo un elemento (pasa directo)
         if len(items) == 1:
             return items[0]
+
+        # Caso 2: Cadena de operaciones (left op right op right...)
         left = items[0]
-        for i in range(1, len(items), 2):
-            op = self._get_name(items[i])
+        # Iteramos de 2 en 2: operador, operando derecho
+        for i in range(1, len(items) - 1, 2):
+            op = str(items[i])
             right = items[i+1]
             left = {"type": "BinOp", "left": left, "op": op, "right": right}
+
         return left
 
     def lvalue(self, items):
