@@ -38,7 +38,7 @@ var_decl: "Clase" IDENTIFIER  -> object_decl
 // --- CONTROL DE FLUJO ---
 if_stmt: "IF" condition "THEN" block ("ELSE" block)?
 while_stmt: "WHILE" condition "DO" block
-for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block
+for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr ("STEP" expr)? "DO" block
 repeat_stmt: "REPEAT" stmt_list "UNTIL" condition
 
 // --- ASIGNACIÓN ---
@@ -60,7 +60,10 @@ term: factor (add_op factor)*
 // --- AQUÍ ESTABA EL ERROR: AHORA ESTÁN SEPARADOS ---
 factor: unary (mul_op unary)*
 
-unary: ("-" | "not") unary | atom
+unary: ("-" | "not") unary
+      | "└" expr "┘" -> floor_op
+      | "┌" expr "┐" -> ceil_op
+      | atom
 
 atom: NUMBER
     | call_expr

@@ -97,13 +97,28 @@ class ASTBuilder(Transformer):
         return {"type": "Repeat", "body": items[0]["body"], "cond": items[1]}
 
     def for_stmt(self, items):
-        # items: [ID, ASSIGN, start, TO, end, DO, block] (Lark puede filtrar algunos)
-        # Buscamos el nombre de la variable (el primer identificador)
+        # items: [ID, ASSIGN, start, end, (step)?, body]
+        # String literals like "FOR", "TO", "STEP", "DO" are dropped by Lark Transformer.
+        
         var_name = self._get_name(items[0])
+        # items[1] is ASSIGN
         start = items[2]
         end = items[3]
-        body = items[4]["body"]
-        return {"type": "For", "var": var_name, "start": start, "end": end, "body": body}
+        
+        step = {"type": "Number", "value": 1}
+        
+        if len(items) == 6:
+            # With STEP: [ID, ASSIGN, start, end, step, body]
+            step = items[4]
+            body_node = items[5]
+        else:
+            # Without STEP: [ID, ASSIGN, start, end, body]
+            body_node = items[4]
+            
+        # Extract body list from Block node if necessary
+        body = body_node["body"] if isinstance(body_node, dict) and body_node.get("type") == "Block" else body_node
+
+        return {"type": "For", "var": var_name, "start": start, "end": end, "step": step, "body": body}
 
     def return_stmt(self, items):
         return {"type": "Return", "value": items[0] if items else None}

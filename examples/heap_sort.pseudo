@@ -1,0 +1,36 @@
+PROCEDURE MaxHeapify(A, i, n)
+BEGIN
+  l <- 2 * i;
+  r <- 2 * i + 1;
+  largest <- i;
+  IF l <= n and A[l] > A[largest] THEN 
+  BEGIN
+    largest <- l; 
+  END
+  IF r <= n and A[r] > A[largest] THEN 
+  BEGIN
+    largest <- r; 
+  END
+  IF largest <> i THEN
+  BEGIN
+    temp <- A[i];
+    A[i] <- A[largest];
+    A[largest] <- temp;
+    CALL MaxHeapify(A, largest, n);
+  END
+END
+
+PROCEDURE HeapSort(A, n)
+BEGIN
+  FOR i <- n div 2 TO 1 STEP -1 DO 
+  BEGIN
+    CALL MaxHeapify(A, i, n);
+  END
+  FOR i <- n TO 2 STEP -1 DO
+  BEGIN
+    temp <- A[1];
+    A[1] <- A[i];
+    A[i] <- temp;
+    CALL MaxHeapify(A, 1, i-1);
+  END
+END

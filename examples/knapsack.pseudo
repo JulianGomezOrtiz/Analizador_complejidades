@@ -1,0 +1,25 @@
+PROCEDURE Knapsack(W, wt, val, n)
+BEGIN
+  IF n = 0 or W = 0 THEN 
+  BEGIN
+    RETURN 0;
+  END
+  
+  IF wt[n] > W THEN 
+  BEGIN
+    RETURN Knapsack(W, wt, val, n-1);
+  END
+  ELSE
+  BEGIN
+    v1 <- val[n] + Knapsack(W-wt[n], wt, val, n-1);
+    v2 <- Knapsack(W, wt, val, n-1);
+    IF v1 > v2 THEN 
+    BEGIN
+        RETURN v1;
+    END
+    ELSE 
+    BEGIN
+        RETURN v2;
+    END
+  END
+END

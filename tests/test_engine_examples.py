@@ -93,7 +93,7 @@ END
 
 def test_fib_complexity():
     out = run(FIBO, "Fib")
-    assert "phi" in out["big_theta"].lower() or "exp" in out["big_o"].lower()
+    assert "phi" in out["big_theta"].lower() or "exp" in out["big_o"].lower() or "1.618" in out["big_theta"]
 
 
 # --------------------------
