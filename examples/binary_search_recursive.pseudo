@@ -1,16 +1,18 @@
 ► BÚSQUEDA BINARIA RECURSIVA
 PROCEDURE BinarySearch(A, left, right, x)
     IF left > right THEN
-        RETURN -1
+        RETURN -1;
     ENDIF
 
-    mid ← (left + right) DIV 2
+    mid <- (left + right) div 2;
 
     IF A[mid] = x THEN
-        RETURN mid
-    ELSEIF x < A[mid] THEN
-        RETURN BinarySearch(A, left, mid - 1, x)
+        RETURN mid;
     ELSE
-        RETURN BinarySearch(A, mid + 1, right, x)
+        IF x < A[mid] THEN
+            RETURN BinarySearch(A, left, mid - 1, x);
+        ELSE
+            RETURN BinarySearch(A, mid + 1, right, x);
+        ENDIF
     ENDIF
 END PROCEDURE

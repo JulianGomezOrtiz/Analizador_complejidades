@@ -1,31 +1,31 @@
 ► QUICKSORT CLÁSICO (PIVOTE FINAL)
 PROCEDURE QuickSort(A, left, right)
     IF left >= right THEN
-        RETURN
+        RETURN;
     ENDIF
 
-    pivotIndex ← Partition(A, left, right)
+    pivotIndex <- Partition(A, left, right);
 
-    CALL QuickSort(A, left, pivotIndex - 1)
-    CALL QuickSort(A, pivotIndex + 1, right)
+    CALL QuickSort(A, left, pivotIndex - 1);
+    CALL QuickSort(A, pivotIndex + 1, right);
 END PROCEDURE
 
 PROCEDURE Partition(A, left, right)
-    pivot ← A[right]
-    i ← left - 1
+    pivot <- A[right];
+    i <- left - 1;
 
-    FOR j ← left TO right - 1 DO
+    FOR j <- left TO right - 1 DO
         IF A[j] ≤ pivot THEN
-            i ← i + 1
-            temp ← A[i]
-            A[i] ← A[j]
-            A[j] ← temp
+            i <- i + 1;
+            temp <- A[i];
+            A[i] <- A[j];
+            A[j] <- temp;
         ENDIF
     END FOR
 
-    temp ← A[i + 1]
-    A[i + 1] ← A[right]
-    A[right] ← temp
+    temp <- A[i + 1];
+    A[i + 1] <- A[right];
+    A[right] <- temp;
 
-    RETURN i + 1
+    RETURN i + 1;
 END PROCEDURE

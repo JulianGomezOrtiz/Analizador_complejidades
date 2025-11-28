@@ -1,6 +1,3 @@
-from analyzer.diagram_generator import TraceGenerator
-from analyzer.ast_transformer import tree_to_ast
-from analyzer.parser import parse_source
 import sys
 import os
 
@@ -9,6 +6,10 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_path = os.path.abspath(os.path.join(current_dir, '../../'))
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
+
+from analyzer.diagram_generator import TraceGenerator
+from analyzer.ast_transformer import tree_to_ast
+from analyzer.parser import parse_source
 
 
 # ==========================================
