@@ -1,16 +1,33 @@
-# React + Vite
+# Complexity Analyzer Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, dark-themed web interface for the Complexity Analyzer project.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Code Editor**: Syntax-highlighted editor for writing and modifying algorithms.
+- **Complexity Analysis**: Real-time display of Big-O, Big-Omega, and Big-Theta complexity.
+- **Reasoning Trace**: Step-by-step explanation of how the complexity was derived.
+- **Example Library**: A sidebar containing 18+ example algorithms including:
+  - Sorting (Insertion, Merge, Quick, Heap, Bubble, Selection)
+  - Searching (Binary, Linear)
+  - Mathematics (Factorial, Fibonacci, GCD, Prime Check, Matrix Mult, Power)
+  - Recursion (Tower of Hanoi, Sum Array)
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1.  **Install Dependencies**:
+    ```bash
+    npm install
+    ```
 
-## Expanding the ESLint configuration
+2.  **Run Development Server**:
+    ```bash
+    npm run dev
+    ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3.  **Backend Requirement**:
+    Ensure the Python backend is running on port 8000:
+    ```bash
+    # From the root directory
+    python -m uvicorn src.server.main:app --reload --host 0.0.0.0 --port 8000
+    ```
