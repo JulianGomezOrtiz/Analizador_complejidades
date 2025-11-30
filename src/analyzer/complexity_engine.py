@@ -37,18 +37,30 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             max_nesting = raw_nesting
 
         reasoning: List[str] = []
-        if cost_report:
-            reasoning.append(f"Costo base estimado (ops elementales): {cost_report.get('total_ops', 0)}")
-
         # ============================================================================
         # 1. ANÁLISIS RECURSIVO (Técnicas Avanzadas)
         # ============================================================================
         if recursions:
             reasoning.append(
                 f"Detectadas {len(recursions)} llamadas recursivas en '{name}'.")
-            # Pasamos 'loops' para saber si hay costo de combinación (f(n))
-            pred = _solve_recurrence(info, has_loops=(len(loops) > 0))
+            
+            calls = info.get("calls", [])
+            has_loops = (len(loops) > 0) or (len(calls) > 0)
+            pred = _solve_recurrence(info, has_loops=has_loops)
+            
+            # Adaptar salida recursiva a estructura multicapa
+            complexity_data = {
+                "worst_case": pred["big_o"],
+                "average_case": pred["big_theta"],
+                "best_case": "Omega(1)", # Heurística: Caso base alcanzado inmediatamente
+                "big_o": pred["big_o"],       # Legacy support
+                "big_theta": pred["big_theta"], # Legacy support
+                "big_omega": "Omega(1)"       # Legacy support
+            }
+            
+            pred["complexity"] = complexity_data
             pred["reasoning"] = reasoning + pred["reasoning"]
+            
             out["procedures"][name] = pred
             continue
 
@@ -59,8 +71,10 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             reasoning.append(
                 f"Estructura iterativa detectada. Profundidad máxima: {max_nesting}.")
 
+            # --- ANÁLISIS PEOR CASO (Worst Case) ---
+            # Basado en max_nesting y tipos de serie
+            
             # Detección de Series Aritméticas (Bucles Dependientes)
-            # Ejemplo: FOR j <- 1 TO i (depende de i)
             dependent_vars = set()
             is_dependent = False
             uses_n = False
@@ -76,14 +90,16 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             for lp in loops:
                 s, e = lp.get("start"), lp.get("end")
                 step = lp.get("step")
+                cond = lp.get("cond")
+                geo_update = lp.get("geometric_update", False)
                 
                 # Check Geometric Series (Step > 1 multiplicative)
-                if step and _is_multiplicative_step(step):
+                if (step and _is_multiplicative_step(step)) or geo_update:
                     is_geometric = True
-                    reasoning.append(f"  -> Paso multiplicativo detectado en bucle '{lp.get('var')}'. Serie Geométrica (log n).")
+                    reasoning.append(f"  -> Paso multiplicativo detectado en bucle '{lp.get('var') or 'WHILE'}'. Serie Geométrica (log n).")
 
                 # Chequear si usa 'n'
-                if _mentions_symbol(s, "n") or _mentions_symbol(e, "n"):
+                if _mentions_symbol(s, "n") or _mentions_symbol(e, "n") or _mentions_symbol(cond, "n"):
                     uses_n = True
 
                 # Chequear si depende de otro bucle (Serie Aritmética)
@@ -94,66 +110,127 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                             reasoning.append(
                                 f"  -> Dependencia detectada: El bucle '{lp.get('var')}' depende de '{var}'.")
                         
-                        # Harmonic check: step depends on outer var? 
-                        # Or inner loop range is n/i? (Hard to detect with current AST)
-                        # Heuristic: if step is variable 'i' from outer loop
                         if step and _mentions_symbol(step, var):
                             is_harmonic = True
                             reasoning.append(f"  -> Paso dependiente de variable externa '{var}'. Posible Serie Armónica.")
 
-            theta = _nesting_to_theta(max_nesting)
-
+            # Calculo Base Peor Caso
+            theta_worst = _nesting_to_theta(max_nesting)
+            
             if is_geometric:
-                # Reduce complexity by log factor for each geometric loop
-                # Simplified: assuming 1 geometric loop reduces n to log n
-                # If max_nesting is 1 -> log n
-                # If max_nesting is 2 -> n log n (if one is geometric)
                 if max_nesting == 1:
-                    big_theta = "Theta(log n)"
+                    theta_worst = "Theta(log n)"
                 else:
-                    big_theta = f"Theta(n^{max_nesting-1} log n)".replace("^", "**")
-                
-                big_o, big_omega = big_theta, big_theta
-                reasoning.append(f"  -> Aplicando reducción logarítmica por serie geométrica: {big_theta}")
+                    theta_worst = f"Theta(n^{max_nesting-1} log n)".replace("^", "**")
+                reasoning.append(f"  -> [Peor Caso] Reducción logarítmica por serie geométrica: {theta_worst}")
 
             elif is_harmonic:
-                # Harmonic series sum(1/i) is log n.
-                # Usually nested inside an n loop -> n log n.
-                big_theta = f"Theta(n^{max_nesting-1} log n)".replace("^", "**")
-                big_o, big_omega = big_theta, big_theta
-                reasoning.append(f"  -> Aplicando suma armónica: {big_theta}")
+                theta_worst = f"Theta(n^{max_nesting-1} log n)".replace("^", "**")
+                reasoning.append(f"  -> [Peor Caso] Suma armónica: {theta_worst}")
 
             elif is_dependent and max_nesting >= 2:
-                reasoning.append(
-                    "  -> Identificado patrón de Serie Aritmética (Triangular).")
-                reasoning.append(
-                    f"  -> Aplicando fórmula de suma: Sum(i) = n(n+1)/2 = Theta(n^2).")
-                # La complejidad sigue siendo n^k, pero el razonamiento es más formal
-                big_theta, big_o, big_omega = theta, theta, theta
+                reasoning.append("  -> [Peor Caso] Serie Aritmética (Triangular) -> n^2.")
+                # Se mantiene n^k
 
-            elif uses_n:
-                reasoning.append(
-                    "  -> Límites constantes respecto a 'n' (Serie Geométrica o Constante).")
-                reasoning.append("  -> Producto cartesiano de iteraciones.")
-                big_theta, big_o = theta, theta
-                big_omega = "Theta(n)" if max_nesting == 1 else theta
+            elif not uses_n:
+                reasoning.append("  -> [Peor Caso] 'n' no encontrado en límites. Posible O(1).")
+                theta_worst = "Theta(1)"
+
+            worst_case = theta_worst.replace("Theta", "O")
+            
+            # --- ANÁLISIS MEJOR CASO (Best Case) ---
+            # Heurística: Cadenas de bucles FOR puros (inevitables).
+            # Los bucles WHILE/REPEAT se asumen evitables (0 iteraciones o 1 check) en el mejor caso.
+            
+            max_unavoidable_depth = 0
+            current_chain_depth = 0
+            loop_stack = [] # (type, nesting)
+            
+            # Reconstrucción simplificada de cadenas basada en nesting
+            # Asumimos que los loops vienen en orden DFS
+            prev_nesting = 0
+            
+            # Mapa de nesting -> es_for_puro
+            # Si un nivel es WHILE, invalida ese nivel y sus hijos para el mejor caso
+            level_is_unavoidable = {} 
+            
+            for lp in loops:
+                nesting = lp.get("nesting", 0)
+                typ = lp.get("type", "")
+                
+                # Si subimos de nivel (nesting <= prev), limpiar niveles superiores
+                if nesting <= prev_nesting:
+                    # No es necesario limpiar explícitamente si sobrescribimos, 
+                    # pero conceptualmente cerramos scopes.
+                    pass
+                
+                # Determinar si este nivel es inevitable
+                # Es inevitable SI es FOR Y su padre (nesting-1) también era inevitable (o es nivel 1)
+                parent_inevitable = True
+                if nesting > 1:
+                    parent_inevitable = level_is_unavoidable.get(nesting - 1, False)
+                
+                is_for = (typ == "For")
+                is_inevitable = is_for and parent_inevitable
+                
+                level_is_unavoidable[nesting] = is_inevitable
+                
+                if is_inevitable:
+                    max_unavoidable_depth = max(max_unavoidable_depth, nesting)
+                
+                prev_nesting = nesting
+
+            if max_unavoidable_depth == 0:
+                best_case = "Omega(1)"
+                reasoning.append("  -> [Mejor Caso] No hay bucles FOR inevitables. Omega(1).")
             else:
-                reasoning.append(
-                    "  -> Símbolo 'n' no encontrado en límites. Posible O(1) o variable desconocida.")
-                big_theta, big_o, big_omega = theta, theta, "Theta(1)"
+                best_case = _nesting_to_theta(max_unavoidable_depth).replace("Theta", "Omega")
+                reasoning.append(f"  -> [Mejor Caso] Cadena de {max_unavoidable_depth} bucles FOR inevitables. {best_case}.")
 
+            # --- ANÁLISIS CASO PROMEDIO (Average Case) ---
+            # Por defecto igual al Peor Caso
+            average_case = theta_worst
+            
             out["procedures"][name] = {
-                "big_o": big_o, "big_omega": big_omega, "big_theta": big_theta,
+                "worst_case": worst_case,
+                "best_case": best_case,
+                "average_case": average_case,
+                "big_o": worst_case,          # Legacy
+                "big_omega": best_case,       # Legacy
+                "big_theta": average_case,    # Legacy
+                "complexity": {
+                    "worst_case": worst_case,
+                    "best_case": best_case,
+                    "average_case": average_case,
+                    "big_o": worst_case,
+                    "big_omega": best_case,
+                    "big_theta": average_case
+                },
                 "cotas_fuertes": f"c1*g(n) <= T(n) <= c2*g(n)",
-                "recurrence": None, "reasoning": reasoning,
+                "recurrence": None, 
+                "reasoning": reasoning,
             }
             continue
 
         # --- CONSTANTE ---
         reasoning.append(
             "No se detectaron estructuras de control dependientes de N.")
+        const_comp = {
+            "worst_case": "Theta(1)",
+            "best_case": "Theta(1)",
+            "average_case": "Theta(1)",
+            "big_o": "Theta(1)",
+            "big_omega": "Theta(1)",
+            "big_theta": "Theta(1)"
+        }
         out["procedures"][name] = {
-            "big_o": "Theta(1)", "big_omega": "Theta(1)", "big_theta": "Theta(1)",
+            "worst_case": "Theta(1)",
+            "best_case": "Theta(1)",
+            "average_case": "Theta(1)",
+            "big_o": "Theta(1)",
+            "big_omega": "Theta(1)",
+            "big_theta": "Theta(1)",
+            "complexity": const_comp,
             "cotas_fuertes": "T(n) = c", "recurrence": None, "reasoning": reasoning,
         }
 
@@ -196,31 +273,48 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
     a = len(recs)  # Número de llamadas recursivas
 
     # --- CASO 1: DIVIDE Y VENCERÁS (Teorema Maestro) ---
-    if "/2" in joined or "mid" in joined or "mitad" in joined:
+    # Verificar si hay variables geométricas en los argumentos
+    uses_geometric = any(r.get("uses_geometric") for r in recs)
+    
+    # Heurística para QuickSort: argumentos con +1 y -1 (partition)
+    has_partition_pattern = ("-1" in joined and "+1" in joined) or ("- 1" in joined and "+ 1" in joined)
+    
+    if "/2" in joined or "mid" in joined or "mitad" in joined or uses_geometric or has_partition_pattern:
         b = 2  # Asumimos división por 2 típica
 
         # Determinar f(n) basado en si hay bucles en el cuerpo
         if has_loops:
             # f(n) = Theta(n) -> Merge Sort, Quick Sort
-            # Caso 2: n^(log_b a) = n^1 vs f(n) = n -> O(n log n)
+            
+            # Si es patrón de partición (QuickSort), el peor caso es n^2
+            if has_partition_pattern:
+                return {
+                    "big_o": "O(n^2)", 
+                    "big_theta": "Theta(n log n)", 
+                    "big_omega": "Omega(n log n)",
+                    "worst_case": "O(n^2)", "average_case": "Theta(n log n)", "best_case": "Omega(n log n)",
+                    "recurrence": f"T(n) = T(q-1) + T(n-q) + O(n)",
+                    "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n^2",
+                    "reasoning": ["Patrón de partición detectado (QuickSort).", "Promedio: Theta(n log n), Peor: O(n^2)."]
+                }
+            
             return {
-                "big_o": "Theta(n log n)", "big_theta": "Theta(n log n)", "big_omega": "Theta(n log n)",
+                "big_o": "O(n log n)", "big_theta": "Theta(n log n)", "big_omega": "Omega(n log n)",
+                "worst_case": "O(n log n)", "average_case": "Theta(n log n)", "best_case": "Omega(n log n)", # MergeSort siempre es n log n
                 "recurrence": f"T(n) = {a}T(n/{b}) + O(n)",
                 "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n*log(n)",
                 "reasoning": [
                     f"Forma del Teorema Maestro: T(n) = aT(n/b) + f(n)",
                     f"  -> a = {a} (llamadas), b = {b} (división)",
                     f"  -> f(n) es O(n) debido a bucles presentes (Merge/Partition).",
-                    f"  -> log_b(a) = log_2({a}) = {1 if a==2 else '?'}",
-                    "  -> Caso 2: f(n) es Theta(n^log_b a) * log^k n -> Resultado Theta(n log n)"
+                    "  -> Resultado Theta(n log n)"
                 ]
             }
         else:
             # f(n) = Theta(1) -> Binary Search
-            # Caso 1: n^(log_b a) vs f(n)=1.
-            # Si a=1 (Binary Search) -> n^0 = 1. f(n) = 1. -> O(log n)? No, Case 2 master theorem con k=0.
             return {
-                "big_o": "Theta(log n)", "big_theta": "Theta(log n)", "big_omega": "Theta(1)",
+                "big_o": "O(log n)", "big_theta": "Theta(log n)", "big_omega": "Omega(1)",
+                "worst_case": "O(log n)", "average_case": "Theta(log n)", "best_case": "Omega(1)",
                 "recurrence": f"T(n) = {a}T(n/{b}) + O(1)",
                 "cotas_fuertes": "c1*log(n) <= T(n) <= c2*log(n)",
                 "reasoning": [
@@ -236,23 +330,14 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
     has_n2 = bool(re.search(r"n.*2", joined))  # n-2
 
     if has_n1 and has_n2:
-        # Resolver r^2 - c1*r - c2 = 0
-        # Asumimos T(n) = T(n-1) + T(n-2) -> r^2 - r - 1 = 0
-        # TODO: Detectar coeficientes reales si es posible. Por ahora asumimos Fibonacci.
-        
-        # Solver cuadrático
-        # r^2 - r - 1 = 0
         phi = (1 + math.sqrt(5)) / 2
-        
         return {
-            "big_o": f"Theta({phi:.3f}^n)", "big_theta": f"Theta({phi:.3f}^n)", "big_omega": f"Theta({phi:.3f}^n)",
+            "big_o": f"O({phi:.3f}^n)", "big_theta": f"Theta({phi:.3f}^n)", "big_omega": "Omega(1)",
+            "worst_case": f"O({phi:.3f}^n)", "average_case": f"Theta({phi:.3f}^n)", "best_case": "Omega(1)",
             "recurrence": "T(n) = T(n-1) + T(n-2)",
             "cotas_fuertes": f"T(n) ~ {phi:.3f}^n",
             "reasoning": [
-                "Recurrencia Lineal Homogénea de Segundo Orden detectada.",
-                "  -> Forma: c1*T(n-1) + c2*T(n-2)",
-                "  -> Ecuación Característica: r^2 - r - 1 = 0",
-                "  -> Raíces: (1 ± sqrt(5)) / 2",
+                "Recurrencia Lineal Homogénea de Segundo Orden detectada (Fibonacci).",
                 f"  -> La raíz dominante es Phi ({phi:.3f}...) -> Crecimiento Exponencial."
             ]
         }
@@ -261,24 +346,27 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
     if has_n1 or "n" in joined:
         if a > 1:
             return {
-                "big_o": f"Theta({a}^n)", "big_theta": f"Theta({a}^n)", "big_omega": f"Theta({a}^n)",
+                "big_o": f"O({a}^n)", "big_theta": f"Theta({a}^n)", "big_omega": "Omega(1)",
+                "worst_case": f"O({a}^n)", "average_case": f"Theta({a}^n)", "best_case": "Omega(1)",
                 "recurrence": f"T(n) = {a}T(n-1) + c",
                 "cotas_fuertes": f"T(n) = c*{a}^n",
                 "reasoning": [
                     f"Múltiples llamadas recursivas ({a}) reduciendo n en 1.",
-                    f"  -> Forma: T(n) = {a}T(n-1) + c",
                     f"  -> Profundidad n, ramificación {a} -> Complejidad Exponencial O({a}^n)."
                 ]
             }
         else:
+            # Caso Lineal Simple (T(n) = T(n-1) + c) -> MaxHeapify, Factorial
             return {
-                "big_o": "Theta(n)", "big_theta": "Theta(n)", "big_omega": "Theta(n)",
+                "big_o": "O(n)", "big_theta": "Theta(n)", "big_omega": "Omega(1)",
+                "worst_case": "O(n)", "average_case": "Theta(n)", "best_case": "Omega(1)", # Heurística: Caso base o condición falsa
                 "recurrence": "T(n) = T(n-1) + c",
                 "cotas_fuertes": "T(n) = c*n",
                 "reasoning": [
                     "Reducción lineal del problema (T(n-1)).",
                     "  -> Profundidad de la pila de recursión: n",
-                    "  -> Costo por nivel: O(1) (sin bucles anidados detectados)."
+                    "  -> Costo por nivel: O(1).",
+                    "  -> [Mejor Caso] Omega(1) si la condición de recursión falla al inicio."
                 ]
             }
 

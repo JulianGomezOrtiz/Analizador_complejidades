@@ -26,9 +26,9 @@ export function AnalysisResult({ data }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <MetricCard label="Big-O" value={complexity.big_o} color="text-slate-300" />
-        <MetricCard label="Big-Ω" value={complexity.big_omega} color="text-slate-300" />
-        <MetricCard label="Big-Θ" value={complexity.big_theta} color={colorClass} highlight />
+        <MetricCard label="Worst Case (Big-O)" value={complexity.big_o} color="text-slate-300" />
+        <MetricCard label="Best Case (Big-Ω)" value={complexity.big_omega} color="text-slate-300" />
+        <MetricCard label="Average Case (Big-Θ)" value={complexity.big_theta} color={colorClass} highlight />
       </div>
 
       {complexity.recurrence && (

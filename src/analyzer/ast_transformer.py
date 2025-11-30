@@ -88,13 +88,24 @@ class ASTBuilder(Transformer):
         return {"type": "Assign", "target": items[0], "value": items[-1]}
 
     def if_stmt(self, items):
-        return {"type": "If", "cond": items[0], "then": items[1]["body"], "else_": items[2]["body"] if len(items) > 2 else []}
+        def extract_body(node):
+            if isinstance(node, dict) and node.get("type") == "Block":
+                return node["body"]
+            if isinstance(node, list):
+                return node
+            return [node]
+
+        then_body = extract_body(items[1])
+        else_body = extract_body(items[2]) if len(items) > 2 else []
+        return {"type": "If", "cond": items[0], "then": then_body, "else_": else_body}
 
     def while_stmt(self, items):
-        return {"type": "While", "cond": items[0], "body": items[1]["body"]}
+        body = items[1]["body"] if isinstance(items[1], dict) and items[1].get("type") == "Block" else [items[1]]
+        return {"type": "While", "cond": items[0], "body": body}
 
     def repeat_stmt(self, items):
-        return {"type": "Repeat", "body": items[0]["body"], "cond": items[1]}
+        body = items[0]["body"] if isinstance(items[0], dict) and items[0].get("type") == "Block" else [items[0]]
+        return {"type": "Repeat", "body": body, "cond": items[1]}
 
     def for_stmt(self, items):
         # items: [ID, ASSIGN, start, end, (step)?, body]
@@ -130,6 +141,7 @@ class ASTBuilder(Transformer):
         return {"type": "Call", "name": name, "args": args}
 
     # --- EXPRESIONES ---
+    def condition(self, items): return items[0]
     def expr(self, items): return items[0]
     def logic_or(self, items): return self._binop_chain(items)
     def logic_and(self, items): return self._binop_chain(items)
@@ -150,6 +162,11 @@ class ASTBuilder(Transformer):
     def ceil_op(self, items): return {
         "type": "Unary", "op": "ceil", "expr": items[0]}
 
+    def _get_op(self, item):
+        if hasattr(item, "data"): # It's a Tree
+            return self._get_op(item.children[0])
+        return str(item)
+
     def _binop_chain(self, items):
         # Caso 0: Lista vacía (Defensivo)
         if not items:
@@ -163,7 +180,7 @@ class ASTBuilder(Transformer):
         left = items[0]
         # Iteramos de 2 en 2: operador, operando derecho
         for i in range(1, len(items) - 1, 2):
-            op = str(items[i])
+            op = self._get_op(items[i])
             right = items[i+1]
             left = {"type": "BinOp", "left": left, "op": op, "right": right}
 
@@ -186,6 +203,12 @@ class ASTBuilder(Transformer):
         # AQUÍ TAMBIÉN: Usar _get_name
         name = self._get_name(items[0])
         args = items[1] if len(items) > 1 else []
+        
+        # Convertir floor/ceil a Unary op para análisis consistente
+        if name.lower() in ("floor", "ceil"):
+            expr = args[0] if args else None
+            return {"type": "Unary", "op": name.lower(), "expr": expr}
+            
         return {"type": "Call", "name": name, "args": args}
 
     def arg_list(self, items):
