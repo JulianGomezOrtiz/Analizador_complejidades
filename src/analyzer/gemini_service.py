@@ -5,10 +5,10 @@ import google.generativeai as genai
 from typing import Dict, Any
 
 
-class GeminiVerifier:
+class GeminiService:
     """
-    Cliente para validación de complejidad usando Google Gemini.
-    Selecciona automáticamente el mejor modelo disponible.
+    Cliente para interacción con Google Gemini.
+    Soporta validación de complejidad y generación de pseudocódigo.
     """
 
     def __init__(self, api_key: str = None):
@@ -113,3 +113,54 @@ class GeminiVerifier:
                 "matches": False,
                 "metrics": {"latency_ms": 0, "total_tokens": 0}
             }
+
+    def generate_pseudocode(self, description: str) -> str:
+        """Genera pseudocódigo a partir de una descripción en lenguaje natural."""
+        if not self.model:
+            return "ERROR: No hay modelo disponible (Verificar API KEY)."
+
+        prompt = f"""
+        Actúa como un experto en algoritmos y estructuras de datos.
+        Tu tarea es convertir la siguiente descripción en lenguaje natural a un pseudocódigo estricto con la siguiente gramática personalizada.
+
+        Descripción: "{description}"
+
+        Reglas de Sintaxis (ESTRICTAS):
+        1. PROCEDIMIENTOS: PROCEDURE Nombre(params) ... END
+        2. BLOQUES: BEGIN ... END
+        3. VARIABLES: 
+           - Declaración simple: int x; (NO uses 'VAR')
+           - Arrays: list A; o A[n]; (NO uses 'ARRAY OF')
+        4. ASIGNACIÓN: x <- 5; (Usa '<-')
+        5. BUCLES: 
+           - FOR i <- 1 TO n DO ... END
+           - WHILE cond DO ... END
+        6. CONDICIONALES: IF cond THEN ... ELSE ... ENDIF
+        7. OPERADORES: +, -, *, /, div, mod, and, or, not
+        8. RETORNO: RETURN valor;
+        9. COMENTARIOS: ► Comentario
+        10. NO uses 'VAR', 'FUNCTION', 'THEN BEGIN' (solo THEN).
+        11. NO incluyas explicaciones, SOLO el código.
+
+        Ejemplo válido:
+        PROCEDURE Example(n)
+        BEGIN
+            int x;
+            x <- 0;
+            FOR i <- 1 TO n DO
+            BEGIN
+                x <- x + 1;
+            END
+            RETURN x;
+        END
+
+        Genera el código ahora:
+        """
+
+        try:
+            response = self.model.generate_content(prompt)
+            # Limpiar markdown si existe
+            code = response.text.replace("```pascal", "").replace("```", "").strip()
+            return code
+        except Exception as e:
+            return f"ERROR generando código: {str(e)}"

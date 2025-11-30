@@ -4,3 +4,6 @@ from typing import Optional
 class AnalyzeRequest(BaseModel):
     code: str
     procedure_name: Optional[str] = None
+
+class TranslateRequest(BaseModel):
+    text: str

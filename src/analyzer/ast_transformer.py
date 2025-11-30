@@ -65,7 +65,11 @@ class ASTBuilder(Transformer):
             return {"name": self._get_name(items[1]), "param_type": self._get_name(items[0])}
         return {"name": self._get_name(items[0]), "param_type": "any"}
 
-    def type_spec(self, items): return self._get_name(items[0])
+    def type_spec(self, items):
+        # print(f"DEBUG type_spec items: {items}")
+        if not items:
+             return "unknown"
+        return self._get_name(items[0])
 
     # --- BLOQUES ---
     def block(self, items):

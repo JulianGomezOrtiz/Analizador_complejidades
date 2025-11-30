@@ -2,6 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add src to path to import analyzer modules
 # Assuming structure: src/server/main.py -> need to go up two levels to reach src parent
@@ -13,9 +16,13 @@ from src.analyzer.ast_transformer import tree_to_ast
 from src.analyzer.static_analyzer import analyze_ast_for_patterns
 from src.analyzer.complexity_engine import infer_complexity
 from src.analyzer.reporter import format_analysis_json
-from src.server.schemas import AnalyzeRequest
+from src.server.schemas import AnalyzeRequest, TranslateRequest
+from src.analyzer.gemini_service import GeminiService
 
 app = FastAPI(title="Complexity Analyzer API")
+
+# Initialize Gemini Service
+gemini_service = GeminiService()
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -59,6 +66,13 @@ async def analyze_code(request: AnalyzeRequest):
         traceback.print_exc()
         # Return error in JSON format instead of 500 for better frontend handling
         return {"error": str(e), "complexity": None}
+
+@app.post("/translate")
+async def translate_text(request: TranslateRequest):
+    code = gemini_service.generate_pseudocode(request.text)
+    if code.startswith("ERROR"):
+         return {"error": code, "code": None}
+    return {"code": code}
 
 @app.get("/health")
 async def health_check():

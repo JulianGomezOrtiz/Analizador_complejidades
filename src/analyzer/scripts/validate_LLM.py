@@ -1,5 +1,5 @@
 from analyzer.scripts.generate_all_diagrams import ALGORITHMS
-from analyzer.gemini_service import GeminiVerifier
+from analyzer.gemini_service import GeminiService
 from analyzer.complexity_engine import infer_complexity
 from analyzer.static_analyzer import analyze_ast_for_patterns
 from analyzer.ast_transformer import tree_to_ast
@@ -31,7 +31,7 @@ def main():
         print("   Opción B: Pégala directamente en el script validate_real.py (línea 23)")
         return
 
-    verifier = GeminiVerifier(api_key=api_key)
+    verifier = GeminiService(api_key=api_key)
 
     print(f"{'ALGORITMO':<20} | {'MI MOTOR':<15} | {'GEMINI':<15} | {'COINCIDE':<8} | {'TOKENS':<8} | {'TIEMPO'}")
     print("-" * 95)
