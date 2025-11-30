@@ -191,6 +191,37 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             # Por defecto igual al Peor Caso
             average_case = theta_worst
             
+
+            # --- GENERACIÓN DE FÓRMULA DE SUMATORIA ---
+            summation_formula = "T(n) = "
+            
+            # Ordenar loops por anidamiento para construir la fórmula de afuera hacia adentro
+            # Asumimos que la lista 'loops' puede no estar ordenada por anidamiento
+            sorted_loops = sorted(loops, key=lambda x: x.get("nesting", 0))
+            
+            # Filtrar solo los bucles que contribuyen al anidamiento máximo (ruta crítica)
+            # Simplificación: Tomamos los primeros 'max_nesting' bucles
+            # Una implementación más robusta requeriría reconstruir el árbol de bucles
+            
+            active_loops = []
+            current_nesting = 0
+            for lp in sorted_loops:
+                if lp.get("nesting", 0) > current_nesting:
+                    active_loops.append(lp)
+                    current_nesting = lp.get("nesting", 0)
+            
+            for lp in active_loops:
+                var = lp.get("var", "i")
+                start_node = lp.get("start", "1")
+                end_node = lp.get("end", "n")
+                
+                start_str = _node_to_string(start_node)
+                end_str = _node_to_string(end_node)
+                
+                summation_formula += f"Σ_{{{var}={start_str}}}^{{{end_str}}} "
+            
+            summation_formula += "O(1)"
+
             out["procedures"][name] = {
                 "worst_case": worst_case,
                 "best_case": best_case,
@@ -207,7 +238,8 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                     "big_theta": average_case
                 },
                 "cotas_fuertes": f"c1*g(n) <= T(n) <= c2*g(n)",
-                "recurrence": None, 
+                "recurrence": None,
+                "summation": summation_formula,
                 "reasoning": reasoning,
             }
             continue
@@ -402,3 +434,25 @@ def _is_multiplicative_step(step_node: Any) -> bool:
         op = step_node.get("op")
         return op in ("*", "/", "div")
     return False
+
+def _node_to_string(node: Any) -> str:
+    """Convierte un nodo del AST a su representación en string."""
+    if isinstance(node, dict):
+        typ = node.get("type")
+        if typ == "Number":
+            val = node.get("value")
+            return str(int(val)) if val == int(val) else str(val)
+        elif typ in ("Identifier", "LValue"):
+            return node.get("name", "?")
+        elif typ == "BinOp":
+            left = _node_to_string(node.get("left"))
+            op = node.get("op")
+            right = _node_to_string(node.get("right"))
+            return f"{left} {op} {right}"
+        elif typ == "Unary":
+            op = node.get("op")
+            expr = _node_to_string(node.get("expr"))
+            return f"{op}{expr}"
+        elif typ == "Literal":
+            return str(node.get("value"))
+    return str(node)

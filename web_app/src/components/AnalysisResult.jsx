@@ -42,6 +42,17 @@ export function AnalysisResult({ data }) {
         </div>
       )}
 
+      {complexity.summation && (
+        <div className="bg-[#0d1117] rounded border border-slate-800 p-4">
+          <h3 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider flex items-center gap-2">
+            <Calculator size={12} /> Summation Formula
+          </h3>
+          <p className="font-mono text-sm text-slate-300">
+            {complexity.summation}
+          </p>
+        </div>
+      )}
+
       <div>
         <h3 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
           <CheckCircle2 size={12} /> Reasoning Trace
