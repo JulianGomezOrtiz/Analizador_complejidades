@@ -1,8 +1,8 @@
 ► FIBONACCI RECURSIVO CLÁSICO
 PROCEDURE Fibonacci(n)
     IF n ≤ 1 THEN
-        RETURN n
+        RETURN n;
     ENDIF
 
-    RETURN Fibonacci(n - 1) + Fibonacci(n - 2)
+    RETURN Fibonacci(n - 1) + Fibonacci(n - 2);
 END PROCEDURE

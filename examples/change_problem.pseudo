@@ -1,0 +1,11 @@
+PROCEDURE Change(coins, amount)
+BEGIN
+  n <- length(coins);
+  FOR i <- 1 TO n DO
+  BEGIN
+    WHILE amount >= coins[i] DO
+    BEGIN
+      amount <- amount - coins[i];
+    END
+  END
+END

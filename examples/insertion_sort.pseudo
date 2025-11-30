@@ -1,0 +1,14 @@
+PROCEDURE InsertionSort(A, n)
+BEGIN
+  FOR i <- 2 TO n DO
+  BEGIN
+    key <- A[i];
+    j <- i - 1;
+    WHILE j > 0 and A[j] > key DO
+    BEGIN
+      A[j+1] <- A[j];
+      j <- j - 1;
+    END
+    A[j+1] <- key;
+  END
+END
