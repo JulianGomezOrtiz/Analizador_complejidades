@@ -1,29 +1,29 @@
 ► 8 REINAS — BACKTRACKING
 PROCEDURE SolveQueens(board, row, n)
     IF row = n THEN
-        RETURN TRUE;
+        RETURN TRUE
     ENDIF
 
-    FOR col <- 0 TO n - 1 DO
+    FOR col ← 0 TO n - 1 DO
         IF IsSafe(board, row, col, n) THEN
-            board[row] <- col;
+            board[row] ← col
             IF SolveQueens(board, row + 1, n) THEN
-                RETURN TRUE;
+                RETURN TRUE
             ENDIF
         ENDIF
     END FOR
 
-    RETURN FALSE;
+    RETURN FALSE
 END PROCEDURE
 
 PROCEDURE IsSafe(board, row, col, n)
-    FOR i <- 0 TO row - 1 DO
+    FOR i ← 0 TO row - 1 DO
         IF board[i] = col THEN
-            RETURN FALSE;
+            RETURN FALSE
         ENDIF
         IF ABS(board[i] - col) = ABS(i - row) THEN
-            RETURN FALSE;
+            RETURN FALSE
         ENDIF
     END FOR
-    RETURN TRUE;
+    RETURN TRUE
 END PROCEDURE

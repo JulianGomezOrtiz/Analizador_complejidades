@@ -1,12 +1,12 @@
 ► TRIPLE BUCLE
 PROCEDURE TripleLoop(n)
-    count <- 0;
-    FOR i <- 1 TO n DO
-        FOR j <- 1 TO n DO
-            FOR k <- 1 TO n DO
-                count <- count + 1;
+    count ← 0
+    FOR i ← 1 TO n DO
+        FOR j ← 1 TO n DO
+            FOR k ← 1 TO n DO
+                count ← count + 1
             END FOR
         END FOR
     END FOR
-    RETURN count;
+    RETURN count
 END PROCEDURE
