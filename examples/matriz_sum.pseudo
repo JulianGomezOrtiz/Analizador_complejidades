@@ -1,10 +1,10 @@
 ► SUMA DE MATRIZ MxN
 PROCEDURE SumMatrix(M, rows, cols)
-    total <- 0;
-    FOR i <- 1 TO rows DO
-        FOR j <- 1 TO cols DO
-            total <- total + M[i][j];
+    total ← 0
+    FOR i ← 1 TO rows DO
+        FOR j ← 1 TO cols DO
+            total ← total + M[i][j]
         END FOR
     END FOR
-    RETURN total;
+    RETURN total
 END PROCEDURE

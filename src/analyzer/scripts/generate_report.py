@@ -1,3 +1,8 @@
+from generate_all_diagrams import ALGORITHMS
+from analyzer.complexity_engine import infer_complexity
+from analyzer.static_analyzer import analyze_ast_for_patterns
+from analyzer.ast_transformer import tree_to_ast
+from analyzer.parser import parse_source
 import sys
 import os
 
@@ -7,19 +12,15 @@ src_path = os.path.abspath(os.path.join(current_dir, '../../'))
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from analyzer.complexity_engine import infer_complexity
-from analyzer.static_analyzer import analyze_ast_for_patterns
-from analyzer.ast_transformer import tree_to_ast
-from analyzer.parser import parse_source
+
+# Reutilizamos los mismos algoritmos de los diagramas
 
 
 def main():
     print("📝 Generando Reporte de Análisis de Patrones (En Español)...")
 
-    # Definir rutas
     report_path = os.path.abspath(os.path.join(
         src_path, '../docs/ANALYSIS_REPORT.md'))
-    examples_path = os.path.abspath(os.path.join(src_path, '../examples'))
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("# 📊 Reporte de Análisis de Complejidad y Patrones\n\n")
@@ -28,22 +29,8 @@ def main():
         f.write(
             "Se incluye el análisis de complejidad asintótica y las relaciones de recurrencia.\n\n")
 
-        # Iterar sobre archivos en la carpeta examples
-        if not os.path.exists(examples_path):
-            print(f"❌ No se encontró la carpeta de ejemplos: {examples_path}")
-            return
-
-        files = [f for f in os.listdir(examples_path) if f.endswith('.pseudo')]
-        files.sort()  # Ordenar para consistencia
-
-        for filename in files:
-            name = os.path.splitext(filename)[0]
-            file_path = os.path.join(examples_path, filename)
-            
+        for name, code in ALGORITHMS.items():
             try:
-                with open(file_path, 'r', encoding='utf-8') as alg_file:
-                    code = alg_file.read()
-
                 # 1. Pipeline de Análisis
                 tree = parse_source(code)
                 ast = tree_to_ast(tree)
@@ -51,12 +38,6 @@ def main():
                 complexity = infer_complexity(ctx, proc_name=None)
 
                 # Extraer datos del procedimiento principal
-                # Si hay múltiples, tomamos el primero o iteramos (asumimos uno principal por archivo por ahora)
-                if not complexity["procedures"]:
-                     f.write(f"## Algoritmo: {name}\n")
-                     f.write("No se detectaron procedimientos.\n\n---\n")
-                     continue
-
                 proc_data = list(complexity["procedures"].values())[0]
 
                 f.write(f"## Algoritmo: {name}\n")
