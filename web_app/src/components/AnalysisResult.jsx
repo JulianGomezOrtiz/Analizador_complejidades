@@ -4,7 +4,7 @@ import clsx from 'clsx'
 
 export function AnalysisResult({ data }) {
   const { complexity, procedure_name } = data
-  
+
   const getComplexityColor = (theta) => {
     if (!theta) return 'text-slate-500'
     if (theta.includes('1') || theta.includes('log')) return 'text-emerald-400'
@@ -49,6 +49,17 @@ export function AnalysisResult({ data }) {
           </h3>
           <p className="font-mono text-sm text-slate-300">
             {complexity.summation}
+          </p>
+        </div>
+      )}
+
+      {complexity.method && (
+        <div className="bg-[#0d1117] rounded border border-slate-800 p-4">
+          <h3 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider flex items-center gap-2">
+            <Calculator size={12} /> Resolution Method
+          </h3>
+          <p className="font-mono text-sm text-emerald-400 font-bold">
+            {complexity.method}
           </p>
         </div>
       )}
