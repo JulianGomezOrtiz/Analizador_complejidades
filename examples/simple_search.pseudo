@@ -1,9 +1,9 @@
 ► BÚSQUEDA LINEAL
 PROCEDURE LinearSearch(A, n, x)
-    FOR i <- 1 TO n DO
+    FOR i ← 1 TO n DO
         IF A[i] = x THEN
-            RETURN i;
+            RETURN i
         ENDIF
     END FOR
-    RETURN -1;
+    RETURN -1
 END PROCEDURE

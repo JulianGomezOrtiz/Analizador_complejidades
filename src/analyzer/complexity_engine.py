@@ -8,7 +8,6 @@ Produce O, Ω, Θ basándose en técnicas formales de las notas de clase:
 
 from typing import Dict, Any, List
 import re
-import math
 
 
 def _nesting_to_theta(k: int) -> str:
@@ -27,7 +26,6 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
     for name, info in targets.items():
         loops = info.get("loops", [])
         recursions = info.get("recursions", [])
-        cost_report = info.get("cost_report", {})
 
         # --- Ajuste de Anidamiento (Sanity Check) ---
         raw_nesting = info.get("max_nesting", 0)
@@ -37,6 +35,10 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             max_nesting = raw_nesting
 
         reasoning: List[str] = []
+<<<<<<< HEAD
+=======
+
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
         # ============================================================================
         # 1. ANÁLISIS RECURSIVO (Técnicas Avanzadas)
         # ============================================================================
@@ -78,17 +80,16 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             dependent_vars = set()
             is_dependent = False
             uses_n = False
-            is_geometric = False
-            is_harmonic = False
 
             # Primera pasada: registrar variables de bucles
             for lp in loops:
                 if lp.get("var"):
                     dependent_vars.add(lp.get("var"))
 
-            # Segunda pasada: verificar dependencias y tipos de serie
+            # Segunda pasada: verificar dependencias en start/end
             for lp in loops:
                 s, e = lp.get("start"), lp.get("end")
+<<<<<<< HEAD
                 step = lp.get("step")
                 cond = lp.get("cond")
                 geo_update = lp.get("geometric_update", False)
@@ -98,6 +99,8 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                     is_geometric = True
                     reasoning.append(f"  -> Paso multiplicativo detectado en bucle '{lp.get('var') or 'WHILE'}'. Serie Geométrica (log n).")
 
+=======
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
                 # Chequear si usa 'n'
                 if _mentions_symbol(s, "n") or _mentions_symbol(e, "n") or _mentions_symbol(cond, "n"):
                     uses_n = True
@@ -109,6 +112,7 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                             is_dependent = True
                             reasoning.append(
                                 f"  -> Dependencia detectada: El bucle '{lp.get('var')}' depende de '{var}'.")
+<<<<<<< HEAD
                         
                         if step and _mentions_symbol(step, var):
                             is_harmonic = True
@@ -131,6 +135,18 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             elif is_dependent and max_nesting >= 2:
                 reasoning.append("  -> [Peor Caso] Serie Aritmética (Triangular) -> n^2.")
                 # Se mantiene n^k
+=======
+
+            theta = _nesting_to_theta(max_nesting)
+
+            if is_dependent and max_nesting >= 2:
+                reasoning.append(
+                    "  -> Identificado patrón de Serie Aritmética (Triangular).")
+                reasoning.append(
+                    f"  -> Aplicando fórmula de suma: Sum(i) = n(n+1)/2 = Theta(n^2).")
+                # La complejidad sigue siendo n^k, pero el razonamiento es más formal
+                big_theta, big_o, big_omega = theta, theta, theta
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
 
             elif not uses_n:
                 reasoning.append("  -> [Peor Caso] 'n' no encontrado en límites. Posible O(1).")
@@ -223,6 +239,7 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             summation_formula += "O(1)"
 
             out["procedures"][name] = {
+<<<<<<< HEAD
                 "worst_case": worst_case,
                 "best_case": best_case,
                 "average_case": average_case,
@@ -241,6 +258,11 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                 "recurrence": None,
                 "summation": summation_formula,
                 "reasoning": reasoning,
+=======
+                "big_o": big_o, "big_omega": big_omega, "big_theta": big_theta,
+                "cotas_fuertes": f"c1*n^{max_nesting} <= T(n) <= c2*n^{max_nesting}",
+                "recurrence": None, "reasoning": reasoning,
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
             }
             continue
 
@@ -362,20 +384,34 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
     has_n2 = bool(re.search(r"n.*2", joined))  # n-2
 
     if has_n1 and has_n2:
+<<<<<<< HEAD
         phi = (1 + math.sqrt(5)) / 2
         return {
             "big_o": f"O({phi:.3f}^n)", "big_theta": f"Theta({phi:.3f}^n)", "big_omega": "Omega(1)",
             "worst_case": f"O({phi:.3f}^n)", "average_case": f"Theta({phi:.3f}^n)", "best_case": "Omega(1)",
+=======
+        return {
+            "big_o": "Theta(phi^n)", "big_theta": "Theta(phi^n)", "big_omega": "Theta(phi^n)",
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
             "recurrence": "T(n) = T(n-1) + T(n-2)",
-            "cotas_fuertes": f"T(n) ~ {phi:.3f}^n",
+            "cotas_fuertes": "T(n) ~ 1.618^n",
             "reasoning": [
+<<<<<<< HEAD
                 "Recurrencia Lineal Homogénea de Segundo Orden detectada (Fibonacci).",
                 f"  -> La raíz dominante es Phi ({phi:.3f}...) -> Crecimiento Exponencial."
+=======
+                "Recurrencia Lineal Homogénea de Segundo Orden detectada.",
+                "  -> Forma: c1*T(n-1) + c2*T(n-2)",
+                "  -> Ecuación Característica: r^2 - r - 1 = 0",
+                "  -> Raíces: (1 ± sqrt(5)) / 2",
+                "  -> La raíz dominante es Phi (1.618...) -> Crecimiento Exponencial."
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
             ]
         }
 
-    # --- CASO 3: RECURSIÓN LINEAL SIMPLE (o Múltiple) ---
+    # --- CASO 3: RECURSIÓN LINEAL SIMPLE ---
     if has_n1 or "n" in joined:
+<<<<<<< HEAD
         if a > 1:
             return {
                 "big_o": f"O({a}^n)", "big_theta": f"Theta({a}^n)", "big_omega": "Omega(1)",
@@ -401,6 +437,18 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                     "  -> [Mejor Caso] Omega(1) si la condición de recursión falla al inicio."
                 ]
             }
+=======
+        return {
+            "big_o": "Theta(n)", "big_theta": "Theta(n)", "big_omega": "Theta(n)",
+            "recurrence": "T(n) = T(n-1) + c",
+            "cotas_fuertes": "T(n) = c*n",
+            "reasoning": [
+                "Reducción lineal del problema (T(n-1)).",
+                "  -> Profundidad de la pila de recursión: n",
+                "  -> Costo por nivel: O(1) (sin bucles anidados detectados)."
+            ]
+        }
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
 
     return _unknown_recursion()
 
@@ -425,6 +473,7 @@ def _mentions_symbol(node: Any, symbol: str) -> bool:
             return s
         return str(n)
     return symbol.lower() in stringify(node).lower()
+<<<<<<< HEAD
 
 def _is_multiplicative_step(step_node: Any) -> bool:
     """Detecta si el paso es * 2, / 2, etc."""
@@ -456,3 +505,5 @@ def _node_to_string(node: Any) -> str:
         elif typ == "Literal":
             return str(node.get("value"))
     return str(node)
+=======
+>>>>>>> 41bccb319b66f77c8f818103781c64498ed61194
