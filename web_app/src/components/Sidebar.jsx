@@ -44,13 +44,30 @@ BEGIN
   BEGIN
     mid <- floor((low + high) / 2);
     IF A[mid] < x THEN
-      low <- mid + 1
+      low <- mid + 1;
     ELSE IF A[mid] > x THEN
-      high <- mid - 1
+      high <- mid - 1;
     ELSE
       RETURN mid;
   END
   RETURN 0;
+END`
+    },
+    {
+      name: 'Binary Search (Recursive)',
+      code: `PROCEDURE BinarySearch(A, left, right, x)
+BEGIN
+    IF left > right THEN
+        RETURN -1;
+
+    mid <- (left + right) div 2;
+
+    IF A[mid] = x THEN
+        RETURN mid;
+    ELSE IF x < A[mid] THEN
+        RETURN BinarySearch(A, left, mid - 1, x);
+    ELSE
+        RETURN BinarySearch(A, mid + 1, right, x);
 END`
     },
     {
@@ -109,6 +126,42 @@ BEGIN
 END`
     },
     {
+      name: 'Quick Sort (Modular)',
+      code: `PROCEDURE QuickSort(A, left, right)
+BEGIN
+    IF left >= right THEN
+        RETURN;
+
+    pivotIndex <- Partition(A, left, right);
+
+    CALL QuickSort(A, left, pivotIndex - 1);
+    CALL QuickSort(A, pivotIndex + 1, right);
+END
+
+PROCEDURE Partition(A, left, right)
+BEGIN
+    pivot <- A[right];
+    i <- left - 1;
+
+    FOR j <- left TO right - 1 DO
+    BEGIN
+        IF A[j] <= pivot THEN
+        BEGIN
+            i <- i + 1;
+            temp <- A[i];
+            A[i] <- A[j];
+            A[j] <- temp;
+        END
+    END
+
+    temp <- A[i + 1];
+    A[i + 1] <- A[right];
+    A[right] <- temp;
+
+    RETURN i + 1;
+END`
+    },
+    {
       name: 'Selection Sort',
       code: `PROCEDURE SelectionSort(A, n)
 BEGIN
@@ -123,7 +176,128 @@ BEGIN
     temp <- A[min_idx];
     A[min_idx] <- A[i];
     A[i] <- temp;
+    A[i] <- temp;
   END
+END`
+    },
+    {
+      name: '8 Queens (Backtracking)',
+      code: `PROCEDURE SolveQueens(board, row, n)
+BEGIN
+    IF row = n THEN
+        RETURN TRUE;
+
+    FOR col <- 0 TO n - 1 DO
+    BEGIN
+        IF IsSafe(board, row, col, n) THEN
+        BEGIN
+            board[row] <- col;
+            IF SolveQueens(board, row + 1, n) THEN
+                RETURN TRUE;
+        END
+    END
+
+    RETURN FALSE;
+END
+
+PROCEDURE IsSafe(board, row, col, n)
+BEGIN
+    FOR i <- 0 TO row - 1 DO
+    BEGIN
+        IF board[i] = col THEN
+            RETURN FALSE;
+        IF ABS(board[i] - col) = ABS(i - row) THEN
+            RETURN FALSE;
+    END
+    RETURN TRUE;
+END`
+    },
+    {
+      name: 'Count Pairs',
+      code: `PROCEDURE CountPairs(A, n)
+BEGIN
+    count <- 0;
+    FOR i <- 1 TO n DO
+    BEGIN
+        FOR j <- i + 1 TO n DO
+        BEGIN
+            IF A[i] < A[j] THEN
+                count <- count + 1;
+        END
+    END
+    RETURN count;
+END`
+    },
+    {
+      name: 'LCS (Dynamic Programming)',
+      code: `PROCEDURE LCS(X, Y, m, n)
+BEGIN
+    ► CREATE C[0..m][0..n];
+
+    FOR i <- 0 TO m DO
+        C[i][0] <- 0;
+
+    FOR j <- 0 TO n DO
+        C[0][j] <- 0;
+
+    FOR i <- 1 TO m DO
+    BEGIN
+        FOR j <- 1 TO n DO
+        BEGIN
+            IF X[i] = Y[j] THEN
+                C[i][j] <- C[i-1][j-1] + 1;
+            ELSE
+            BEGIN
+                IF C[i-1][j] >= C[i][j-1] THEN
+                    C[i][j] <- C[i-1][j];
+                ELSE
+                    C[i][j] <- C[i][j-1];
+            END
+        END
+    END
+
+    RETURN C[m][n];
+END`
+    },
+    {
+      name: 'Matrix Sum',
+      code: `PROCEDURE SumMatrix(M, rows, cols)
+BEGIN
+    total <- 0;
+    FOR i <- 1 TO rows DO
+    BEGIN
+        FOR j <- 1 TO cols DO
+            total <- total + M[i][j];
+    END
+    RETURN total;
+END`
+    },
+    {
+      name: 'Triple Loop',
+      code: `PROCEDURE TripleLoop(n)
+BEGIN
+    count <- 0;
+    FOR i <- 1 TO n DO
+    BEGIN
+        FOR j <- 1 TO n DO
+        BEGIN
+            FOR k <- 1 TO n DO
+                count <- count + 1;
+        END
+    END
+    RETURN count;
+END`
+    },
+    {
+      name: 'Linear Search',
+      code: `PROCEDURE LinearSearch(A, n, x)
+BEGIN
+    FOR i <- 1 TO n DO
+    BEGIN
+        IF A[i] = x THEN
+            RETURN i;
+    END
+    RETURN -1;
 END`
     }
   ]
