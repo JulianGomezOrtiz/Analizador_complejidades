@@ -26,6 +26,9 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
     for name, info in targets.items():
         loops = info.get("loops", [])
         recursions = info.get("recursions", [])
+        recursions = info.get("recursions", [])
+        cost_report = info.get("cost_report", {})
+        line_costs = info.get("line_costs", {}) # Get line costs
 
         # --- Ajuste de Anidamiento (Sanity Check) ---
         raw_nesting = info.get("max_nesting", 0)
@@ -54,7 +57,8 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                 "best_case": "Omega(1)", # Heurística: Caso base alcanzado inmediatamente
                 "big_o": pred["big_o"],       # Legacy support
                 "big_theta": pred["big_theta"], # Legacy support
-                "big_omega": "Omega(1)"       # Legacy support
+                "big_omega": "Omega(1)",       # Legacy support
+                "method": pred.get("method")   # New field
             }
             
             pred["complexity"] = complexity_data
@@ -237,7 +241,9 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                 "cotas_fuertes": f"c1*g(n) <= T(n) <= c2*g(n)",
                 "recurrence": None,
                 "summation": summation_formula,
+                "method": "iteracion",
                 "reasoning": reasoning,
+                "line_costs": line_costs # Pass to frontend
             }
             continue
 
@@ -260,7 +266,11 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             "big_omega": "Theta(1)",
             "big_theta": "Theta(1)",
             "complexity": const_comp,
+            "complexity": const_comp,
+            "complexity": const_comp,
             "cotas_fuertes": "T(n) = c", "recurrence": None, "reasoning": reasoning,
+            "method": "iteracion",
+            "line_costs": line_costs # Pass to frontend
         }
 
     return out
@@ -324,6 +334,7 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                     "worst_case": "O(n^2)", "average_case": "Theta(n log n)", "best_case": "Omega(n log n)",
                     "recurrence": f"T(n) = T(q-1) + T(n-q) + O(n)",
                     "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n^2",
+                    "method": "teorema maestro",
                     "reasoning": ["Patrón de partición detectado (QuickSort).", "Promedio: Theta(n log n), Peor: O(n^2)."]
                 }
             
@@ -332,6 +343,7 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                 "worst_case": "O(n log n)", "average_case": "Theta(n log n)", "best_case": "Omega(n log n)", # MergeSort siempre es n log n
                 "recurrence": f"T(n) = {a}T(n/{b}) + O(n)",
                 "cotas_fuertes": "c1*n*log(n) <= T(n) <= c2*n*log(n)",
+                "method": "teorema maestro",
                 "reasoning": [
                     f"Forma del Teorema Maestro: T(n) = aT(n/b) + f(n)",
                     f"  -> a = {a} (llamadas), b = {b} (división)",
@@ -346,6 +358,7 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                 "worst_case": "O(log n)", "average_case": "Theta(log n)", "best_case": "Omega(1)",
                 "recurrence": f"T(n) = {a}T(n/{b}) + O(1)",
                 "cotas_fuertes": "c1*log(n) <= T(n) <= c2*log(n)",
+                "method": "teorema maestro",
                 "reasoning": [
                     f"Forma del Teorema Maestro: T(n) = {a}T(n/{b}) + O(1)",
                     "  -> No hay bucles significativos fuera de la recursión (f(n) = O(1)).",
@@ -364,7 +377,8 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
             "big_o": f"O({phi:.3f}^n)", "big_theta": f"Theta({phi:.3f}^n)", "big_omega": "Omega(1)",
             "worst_case": f"O({phi:.3f}^n)", "average_case": f"Theta({phi:.3f}^n)", "best_case": "Omega(1)",
             "recurrence": "T(n) = T(n-1) + T(n-2)",
-            "cotas_fuertes": "T(n) ~ 1.618^n",
+            "cotas_fuertes": f"T(n) ~ {phi:.3f}^n",
+            "method": "ecuacion caracteristica",
             "reasoning": [
                 "Recurrencia Lineal Homogénea de Segundo Orden detectada (Fibonacci).",
                 f"  -> La raíz dominante es Phi ({phi:.3f}...) -> Crecimiento Exponencial."
@@ -379,6 +393,7 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                 "worst_case": f"O({a}^n)", "average_case": f"Theta({a}^n)", "best_case": "Omega(1)",
                 "recurrence": f"T(n) = {a}T(n-1) + c",
                 "cotas_fuertes": f"T(n) = c*{a}^n",
+                "method": "arbol de recursion",
                 "reasoning": [
                     f"Múltiples llamadas recursivas ({a}) reduciendo n en 1.",
                     f"  -> Profundidad n, ramificación {a} -> Complejidad Exponencial O({a}^n)."
@@ -391,6 +406,7 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
                 "worst_case": "O(n)", "average_case": "Theta(n)", "best_case": "Omega(1)", # Heurística: Caso base o condición falsa
                 "recurrence": "T(n) = T(n-1) + c",
                 "cotas_fuertes": "T(n) = c*n",
+                "method": "sustitucion",
                 "reasoning": [
                     "Reducción lineal del problema (T(n-1)).",
                     "  -> Profundidad de la pila de recursión: n",

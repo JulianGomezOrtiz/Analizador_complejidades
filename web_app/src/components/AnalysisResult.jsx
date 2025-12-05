@@ -1,10 +1,11 @@
-import React from 'react'
-import { CheckCircle2, Clock, Calculator } from 'lucide-react'
+import React, { useState } from 'react'
+import { CheckCircle2, Clock, Calculator, FileCode, X } from 'lucide-react'
 import clsx from 'clsx'
 
 export function AnalysisResult({ data }) {
   const { complexity, procedure_name } = data
-  
+  const [showCostModal, setShowCostModal] = useState(false)
+
   const getComplexityColor = (theta) => {
     if (!theta) return 'text-slate-500'
     if (theta.includes('1') || theta.includes('log')) return 'text-emerald-400'
@@ -25,12 +26,14 @@ export function AnalysisResult({ data }) {
         </p>
       </div>
 
+      {/* 1. Metrics: Worst, Best, Average */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <MetricCard label="Worst Case (Big-O)" value={complexity.big_o} color="text-slate-300" />
         <MetricCard label="Best Case (Big-Ω)" value={complexity.big_omega} color="text-slate-300" />
         <MetricCard label="Average Case (Big-Θ)" value={complexity.big_theta} color={colorClass} highlight />
       </div>
 
+      {/* 2. Formula: Recurrence OR Summation */}
       {complexity.recurrence && (
         <div className="bg-[#0d1117] rounded border border-slate-800 p-4">
           <h3 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider flex items-center gap-2">
@@ -53,6 +56,27 @@ export function AnalysisResult({ data }) {
         </div>
       )}
 
+      {/* 3. Resolution Method */}
+      {complexity.method && (
+        <div className="bg-[#0d1117] rounded border border-slate-800 p-4">
+          <h3 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider flex items-center gap-2">
+            <Calculator size={12} /> Resolution Method
+          </h3>
+          <p className="font-mono text-sm text-emerald-400 font-bold">
+            {complexity.method}
+          </p>
+        </div>
+      )}
+
+      {/* 4. Algorithm Cost Button */}
+      <button
+        onClick={() => setShowCostModal(true)}
+        className="w-fit px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded transition-colors border border-slate-700 flex items-center gap-2"
+      >
+        <FileCode size={16} />
+        VIEW ALGORITHM COST ANALYSIS
+      </button>
+
       <div>
         <h3 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
           <CheckCircle2 size={12} /> Reasoning Trace
@@ -68,6 +92,54 @@ export function AnalysisResult({ data }) {
           ))}
         </div>
       </div>
+
+      {/* Cost Modal */}
+      {showCostModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0d1117] border border-slate-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="font-bold text-slate-200 flex items-center gap-2">
+                <FileCode size={16} /> Algorithm Cost Analysis
+              </h3>
+              <button onClick={() => setShowCostModal(false)} className="text-slate-500 hover:text-slate-300">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-0 font-mono text-xs">
+              <table className="w-full border-collapse">
+                <thead className="bg-slate-900 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left text-slate-500 font-bold border-b border-slate-800 w-12">#</th>
+                    <th className="p-3 text-left text-slate-500 font-bold border-b border-slate-800">Code</th>
+                    <th className="p-3 text-right text-slate-500 font-bold border-b border-slate-800 w-24">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.source_code ? data.source_code.split('\n').map((line, i) => {
+                    const lineNum = i + 1
+                    const cost = complexity.line_costs ? complexity.line_costs[lineNum.toString()] : ''
+                    return (
+                      <tr key={i} className="hover:bg-slate-800/30 transition-colors border-b border-slate-800/50">
+                        <td className="p-3 text-slate-600 select-none border-r border-slate-800/50 text-right">{lineNum}</td>
+                        <td className="p-3 text-slate-300 whitespace-pre">{line}</td>
+                        <td className="p-3 text-right font-bold text-emerald-400 border-l border-slate-800/50">
+                          {cost || ''}
+                        </td>
+                      </tr>
+                    )
+                  }) : (
+                    <tr>
+                      <td colSpan={3} className="p-8 text-center text-slate-500">
+                        Source code not available for display.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
