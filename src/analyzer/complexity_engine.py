@@ -27,7 +27,9 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
     for name, info in targets.items():
         loops = info.get("loops", [])
         recursions = info.get("recursions", [])
+        recursions = info.get("recursions", [])
         cost_report = info.get("cost_report", {})
+        line_costs = info.get("line_costs", {}) # Get line costs
 
         # --- Ajuste de Anidamiento (Sanity Check) ---
         raw_nesting = info.get("max_nesting", 0)
@@ -241,7 +243,9 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
                 "cotas_fuertes": f"c1*g(n) <= T(n) <= c2*g(n)",
                 "recurrence": None,
                 "summation": summation_formula,
+                "method": "iteracion",
                 "reasoning": reasoning,
+                "line_costs": line_costs # Pass to frontend
             }
             continue
 
@@ -265,7 +269,10 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             "big_theta": "Theta(1)",
             "complexity": const_comp,
             "complexity": const_comp,
+            "complexity": const_comp,
             "cotas_fuertes": "T(n) = c", "recurrence": None, "reasoning": reasoning,
+            "method": "iteracion",
+            "line_costs": line_costs # Pass to frontend
         }
 
     return out

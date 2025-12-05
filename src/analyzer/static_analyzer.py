@@ -20,11 +20,16 @@ def analyze_ast_for_patterns(ast: Dict[str, Any]) -> Dict[str, Any]:
         cost_reporter = CostReporter()
         cost_reporter.visit(body)
 
+        # Line Cost Analyzer
+        line_analyzer = LineCostAnalyzer(proc_name)
+        line_analyzer.visit(body)
+
         procedures[proc_name] = {
             "loops": analyzer.loops,
             "recursions": analyzer.recursions,
             "calls": analyzer.calls,
             "max_nesting": analyzer.max_nesting,
+            "line_costs": line_analyzer.line_costs, # New field
             "cost_report": {
                 "total_ops": cost_reporter.total_ops,
                 "breakdown": cost_reporter.ops_breakdown
@@ -275,3 +280,200 @@ class CostReporter:
     def _add(self, category):
         self.total_ops += 1
         self.ops_breakdown[category] += 1
+
+
+class LineCostAnalyzer:
+    """
+    Asigna un costo simbólico simplificado a cada línea.
+    Resuelve sumatorias simples: Sum(1, a, b) -> b - a + 1
+    Identifica llamadas recursivas: T(args)
+    """
+    def __init__(self, proc_name=None):
+        self.line_costs = {} # { line_number (int): cost (str) }
+        self.context_stack = [] # Lista de dicts: {'type': 'sigma', 'var': 'i', 'start': '...', 'end': '...'}
+        self.nesting = 0
+        self.proc_name = proc_name
+
+    def _node_to_string(self, node):
+        if isinstance(node, dict):
+            typ = node.get("type")
+            if typ == "Number":
+                val = node.get("value")
+                return str(int(val)) if val == int(val) else str(val)
+            elif typ in ("Identifier", "LValue"):
+                return node.get("name", "?")
+            elif typ == "BinOp":
+                left = self._node_to_string(node.get("left"))
+                op = node.get("op")
+                right = self._node_to_string(node.get("right"))
+                return f"{left}{op}{right}"
+            elif typ == "Unary":
+                op = node.get("op")
+                expr = self._node_to_string(node.get("expr"))
+                return f"{op}{expr}"
+        return str(node)
+
+    def _calculate_cost(self, local_term="1"):
+        # Simplificación básica de sumatorias de afuera hacia adentro (o viceversa)
+        # En realidad, el costo es Sum(Sum(... Sum(local_term) ...))
+        
+        cost = local_term
+        
+        # Iteramos desde el contexto más interno al más externo
+        for ctx in reversed(self.context_stack):
+            if ctx['type'] == 'sigma':
+                var = ctx['var']
+                start = ctx['start']
+                end = ctx['end']
+                
+                # Regla 1: Sum(1, a, b) -> b - a + 1
+                if cost == "1":
+                    # Simplificación algebraica básica de strings
+                    if start == "1":
+                        cost = end
+                    else:
+                        cost = f"({end} - {start} + 1)"
+                
+                # Regla 2: Sum(c, a, b) donde c no depende de var -> c * (b - a + 1)
+                elif var not in cost: # Chequeo simple de dependencia
+                    if start == "1":
+                        count = end
+                    else:
+                        count = f"({end} - {start} + 1)"
+                    
+                    if cost == "1": 
+                        cost = count
+                    else:
+                        cost = f"{count} * {cost}"
+                
+                # Regla 3: No se puede simplificar (ej: Sum(t_i, ...))
+                else:
+                    cost = f"Σ_{{{var}={start}}}^{{{end}}} ({cost})"
+            
+            elif ctx['type'] == 'sigma_unknown':
+                # Sumatoria con limite desconocido (While)
+                # Sum_{k=1}^{t_i}
+                limit = ctx['limit']
+                if cost == "1":
+                    cost = limit
+                elif "k" not in cost: # Asumimos k es la var de sumatoria interna implicita
+                     cost = f"{limit} * {cost}"
+                else:
+                    cost = f"Σ_{{k=1}}^{{{limit}}} {cost}"
+
+        return cost
+
+    def visit(self, node):
+        if isinstance(node, list):
+            for item in node:
+                self.visit(item)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        typ = node.get("type")
+        line = node.get("line")
+
+        # --- Manejo de Estructuras de Control ---
+        if typ == "For":
+            var = node.get("var", "i")
+            start = self._node_to_string(node.get("start"))
+            end = self._node_to_string(node.get("end"))
+            
+            # 1. Registrar costo del encabezado
+            # El encabezado se ejecuta en el contexto SUPERIOR, pero incluye la iteración actual + 1 (check de salida)
+            # Para simplificar, asumimos que el encabezado tiene el mismo costo que el cuerpo + 1 iteración, 
+            # o simplemente el costo del contexto superior * (iteraciones + 1).
+            # Pero el usuario pidió "n-1" para "2 to n". Eso es exactamente el número de iteraciones del cuerpo.
+            # Vamos a mostrar el costo del cuerpo para el encabezado también, o cuerpo + 1.
+            # User example: "FOR i <- 2 TO n DO se ejecuta n-1 veces". -> Esto es count(body).
+            
+            # Calculamos el costo de ESTE bucle (body count)
+            if start == "1":
+                loop_count = end
+            else:
+                loop_count = f"({end} - {start} + 1)"
+            
+            # El costo total es: Contexto_Externo * loop_count
+            # Para lograr esto, llamamos a _calculate_cost con loop_count como término local
+            if line is not None:
+                self.line_costs[str(line)] = self._calculate_cost(local_term=loop_count)
+
+            # 2. Entrar al cuerpo
+            self.context_stack.append({'type': 'sigma', 'var': var, 'start': start, 'end': end})
+            self.nesting += 1
+            self.visit(node.get("body"))
+            self.nesting -= 1
+            self.context_stack.pop()
+            return
+
+        elif typ == "While":
+            # While cond DO ...
+            t_var = f"t_{self.nesting + 1}"
+            
+            # Costo encabezado: Contexto * t_var
+            if line is not None:
+                self.line_costs[str(line)] = self._calculate_cost(local_term=t_var)
+            
+            # Cuerpo: Contexto * (t_var - 1) ... pero user dijo "mas las veces en que el while se realiza"
+            # User dijo: "while se debe tener en cuenta una sumatoria... n-1 veces, mas las veces en que el while se realiza"
+            # O sea: Sum_{externo} (t_i)
+            
+            # Para el cuerpo, añadimos el contexto de sumatoria hasta t_i
+            # Usamos 'sigma_unknown' para representar Sum_{k=1}^{t_i}
+            self.context_stack.append({'type': 'sigma_unknown', 'limit': t_var})
+            self.nesting += 1
+            self.visit(node.get("body"))
+            self.nesting -= 1
+            self.context_stack.pop()
+            return
+
+        elif typ == "Repeat":
+            t_var = f"t_{self.nesting + 1}"
+            
+            self.context_stack.append({'type': 'sigma_unknown', 'limit': t_var})
+            self.nesting += 1
+            self.visit(node.get("body"))
+            self.nesting -= 1
+            self.context_stack.pop()
+            
+            if line is not None:
+                 self.line_costs[str(line)] = self._calculate_cost(local_term=t_var)
+            return
+
+        elif typ == "If":
+            if line is not None:
+                self.line_costs[str(line)] = self._calculate_cost(local_term="1")
+            
+            self.visit(node.get("then"))
+            self.visit(node.get("else_"))
+            return
+
+        elif typ == "Call":
+            # Verificar si es llamada recursiva
+            name = node.get("name")
+            if name == self.proc_name and self.proc_name is not None:
+                # Extraer argumentos para mostrar T(...)
+                args = node.get("args", [])
+                arg_strs = [self._node_to_string(arg) for arg in args]
+                args_joined = ", ".join(arg_strs)
+                term = f"T({args_joined})"
+                
+                if line is not None:
+                    self.line_costs[str(line)] = self._calculate_cost(local_term=term)
+            else:
+                # Llamada normal (O(1) o costo desconocido, asumimos 1 por ahora)
+                if line is not None:
+                    self.line_costs[str(line)] = self._calculate_cost(local_term="1")
+            return
+
+        # --- Instrucciones Simples ---
+        if line is not None:
+            self.line_costs[str(line)] = self._calculate_cost(local_term="1")
+
+        # Recurse children generic
+        for key, value in node.items():
+            if key not in ("type", "line", "var", "op", "name", "body", "then", "else_", "start", "end"):
+                self.visit(value)
+

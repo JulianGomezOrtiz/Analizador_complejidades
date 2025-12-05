@@ -20,7 +20,8 @@ function App() {
         setError(res.data.error)
         setResult(null)
       } else {
-        setResult(res.data)
+        // Inject source code into result for display
+        setResult({ ...res.data, source_code: code })
       }
     } catch (err) {
       setError(err.message)
