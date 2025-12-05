@@ -1,9 +1,38 @@
-import React from 'react'
-import { CheckCircle2, Clock, Calculator } from 'lucide-react'
+import React, { useState } from 'react'
+import { CheckCircle2, Clock, Calculator, Network, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
+import { DiagramViewer } from './DiagramViewer'
 
-export function AnalysisResult({ data }) {
+export function AnalysisResult({ data, code }) {
   const { complexity, procedure_name } = data
+  const [showDiagram, setShowDiagram] = useState(false)
+  const [dotSource, setDotSource] = useState(null)
+  const [loadingDiagram, setLoadingDiagram] = useState(false)
+
+  const handleVisualize = async () => {
+    if (dotSource) {
+      setShowDiagram(true)
+      return
+    }
+    
+    setLoadingDiagram(true)
+    try {
+      const res = await fetch('http://localhost:8000/diagram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, procedure_name: procedure_name })
+      })
+      const json = await res.json()
+      if (json.dot_source) {
+          setDotSource(json.dot_source)
+          setShowDiagram(true)
+      }
+    } catch (e) {
+        console.error(e)
+    } finally {
+        setLoadingDiagram(false)
+    }
+  }
   
   const getComplexityColor = (theta) => {
     if (!theta) return 'text-slate-500'
@@ -18,11 +47,23 @@ export function AnalysisResult({ data }) {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-800 pb-4">
-        <h2 className="text-xl font-bold text-slate-200 tracking-tight">{procedure_name}</h2>
-        <p className="text-slate-500 text-xs mt-1 font-mono">
-          Complexity Analysis
-        </p>
+      {showDiagram && <DiagramViewer dotSource={dotSource} onClose={() => setShowDiagram(false)} />}
+      
+      <div className="border-b border-slate-800 pb-4 flex justify-between items-start">
+        <div>
+          <h2 className="text-xl font-bold text-slate-200 tracking-tight">{procedure_name}</h2>
+          <p className="text-slate-500 text-xs mt-1 font-mono">
+            Complexity Analysis
+          </p>
+        </div>
+        <button 
+          onClick={handleVisualize}
+          disabled={loadingDiagram}
+          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs font-bold transition-all border border-slate-700"
+        >
+          {loadingDiagram ? <Loader2 size={14} className="animate-spin" /> : <Network size={14} />}
+          VISUALIZE FLOW
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

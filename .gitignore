@@ -208,3 +208,7 @@ __marimo__/
 
 requirements.txt
 .github
+
+node_modules/
+.vite/
+dist/
