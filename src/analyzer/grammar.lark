@@ -9,7 +9,7 @@ class_decl: "Clase" IDENTIFIER "{" attribute_list "}"
 attribute_list: IDENTIFIER*
 
 // --- PROCEDIMIENTOS ---
-procedure: "PROCEDURE" IDENTIFIER "(" param_list? ")" (block | stmt_list "END" "PROCEDURE")
+procedure: "PROCEDURE" IDENTIFIER "(" param_list? ")" block
 
 // --- PARÁMETROS ---
 param_list: param ("," param)*
@@ -36,9 +36,9 @@ var_decl: "Clase" IDENTIFIER  -> object_decl
         | IDENTIFIER "[" expr "]" -> vector_decl
 
 // --- CONTROL DE FLUJO ---
-if_stmt: "IF" condition "THEN" (block | stmt_list) ("ELSE" (block | stmt_list))? ("ENDIF" | "END" "IF")?
-while_stmt: "WHILE" condition "DO" (block | stmt_list "END" "WHILE")
-for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr ("STEP" expr)? "DO" (block | stmt_list "END" "FOR")
+if_stmt: "IF" condition "THEN" block ("ELSE" block)?
+while_stmt: "WHILE" condition "DO" block
+for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block
 repeat_stmt: "REPEAT" stmt_list "UNTIL" condition
 
 // --- ASIGNACIÓN ---
@@ -60,10 +60,7 @@ term: factor (add_op factor)*
 // --- AQUÍ ESTABA EL ERROR: AHORA ESTÁN SEPARADOS ---
 factor: unary (mul_op unary)*
 
-unary: ("-" | "not") unary
-      | "└" expr "┘" -> floor_op
-      | "┌" expr "┐" -> ceil_op
-      | atom
+unary: ("-" | "not") unary | atom
 
 atom: NUMBER
     | call_expr
