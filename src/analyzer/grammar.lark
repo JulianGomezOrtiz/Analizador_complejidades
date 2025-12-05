@@ -28,6 +28,7 @@ statement: assign_stmt ";"
          | repeat_stmt
          | return_stmt ";"
          | call_stmt ";"
+         | call_expr ";"
          | var_decl ";"
 
 // --- VARIABLES LOCALES ---
@@ -36,9 +37,11 @@ var_decl: "Clase" IDENTIFIER  -> object_decl
         | IDENTIFIER "[" expr "]" -> vector_decl
 
 // --- CONTROL DE FLUJO ---
-if_stmt: "IF" condition "THEN" block ("ELSE" block)?
-while_stmt: "WHILE" condition "DO" block
-for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" block
+?stmt_or_block: block | statement | assign_stmt | return_stmt | call_stmt | call_expr
+
+if_stmt: "IF" condition "THEN" stmt_or_block ("ELSE" stmt_or_block)?
+while_stmt: "WHILE" condition "DO" stmt_or_block
+for_stmt: "FOR" IDENTIFIER ASSIGN expr "TO" expr "DO" stmt_or_block
 repeat_stmt: "REPEAT" stmt_list "UNTIL" condition
 
 // --- ASIGNACIÓN ---

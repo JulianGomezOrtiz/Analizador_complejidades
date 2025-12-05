@@ -8,6 +8,7 @@ Produce O, Ω, Θ basándose en técnicas formales de las notas de clase:
 
 from typing import Dict, Any, List
 import re
+import math
 
 
 def _nesting_to_theta(k: int) -> str:
@@ -81,6 +82,8 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             dependent_vars = set()
             is_dependent = False
             uses_n = False
+            is_geometric = False
+            is_harmonic = False
 
             # Primera pasada: registrar variables de bucles
             for lp in loops:

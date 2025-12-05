@@ -1,6 +1,7 @@
 import graphviz
 from typing import Dict, Any
 import os
+import base64
 
 
 class TraceGenerator:
@@ -76,6 +77,52 @@ class TraceGenerator:
                 print(f" ✨ Diagrama PRO generado: {output_path}.{self.format}")
             except graphviz.backend.ExecutableNotFound:
                 print("⚠️ ERROR: Graphviz no está instalado o no está en el PATH.")
+
+    def generate_base64(self):
+        """Genera el diagrama y retorna la imagen en base64."""
+        procs = self.ast.get("procedures", [])
+        if not procs:
+            return None
+
+        # Por simplicidad, generamos solo el primer procedimiento
+        proc = procs[0]
+        proc_name = proc.get("name", "Unknown")
+        
+        self.graph = graphviz.Digraph(f'cluster_{proc_name}', format=self.format)
+        self.graph.attr(
+            rankdir='TB',
+            splines='ortho',
+            nodesep='0.5',
+            ranksep='0.5',
+            fontname='Helvetica',
+            label=f'CFG: {proc_name}',
+            labelloc='t'
+        )
+        self.node_count = 0
+
+        # --- Inicio ---
+        params = ", ".join([p['name'] for p in proc.get('params', [])])
+        start_label = f"START\n{proc_name}({params})"
+        start_node = self._add_node(start_label, **self.style["start"])
+
+        # --- Cuerpo ---
+        last_node = self._visit_block(proc.get("body", []), start_node)
+
+        # --- Fin ---
+        end_node = self._add_node("END", **self.style["end"])
+        if last_node:
+            self.graph.edge(last_node, end_node, **self.style["edge"])
+
+        try:
+            # Generar imagen en memoria
+            image_data = self.graph.pipe()
+            return base64.b64encode(image_data).decode('utf-8')
+        except graphviz.backend.ExecutableNotFound:
+            print("⚠️ ERROR: Graphviz no está instalado o no está en el PATH.")
+            return None
+        except Exception as e:
+            print(f"⚠️ ERROR generando diagrama: {e}")
+            return None
 
     def _add_node(self, label, **kwargs):
         node_id = f"node_{self.node_count}"

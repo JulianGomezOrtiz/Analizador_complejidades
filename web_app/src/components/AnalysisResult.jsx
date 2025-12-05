@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { CheckCircle2, Clock, Calculator, FileCode, X } from 'lucide-react'
+import { CheckCircle2, Clock, Calculator, FileCode, X, Network } from 'lucide-react'
 import clsx from 'clsx'
 
 export function AnalysisResult({ data }) {
   const { complexity, procedure_name } = data
   const [showCostModal, setShowCostModal] = useState(false)
+  const [showDiagramModal, setShowDiagramModal] = useState(false)
 
   const getComplexityColor = (theta) => {
     if (!theta) return 'text-slate-500'
@@ -68,14 +69,26 @@ export function AnalysisResult({ data }) {
         </div>
       )}
 
-      {/* 4. Algorithm Cost Button */}
-      <button
-        onClick={() => setShowCostModal(true)}
-        className="w-fit px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded transition-colors border border-slate-700 flex items-center gap-2"
-      >
-        <FileCode size={16} />
-        VIEW ALGORITHM COST ANALYSIS
-      </button>
+      {/* 4. Actions */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowCostModal(true)}
+          className="w-fit px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded transition-colors border border-slate-700 flex items-center gap-2"
+        >
+          <FileCode size={16} />
+          VIEW ALGORITHM COST ANALYSIS
+        </button>
+
+        {data.diagram && (
+          <button
+            onClick={() => setShowDiagramModal(true)}
+            className="w-fit px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold rounded transition-colors border border-slate-700 flex items-center gap-2"
+          >
+            <Network size={16} />
+            VIEW CONTROL FLOW GRAPH
+          </button>
+        )}
+      </div>
 
       <div>
         <h3 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
@@ -136,6 +149,25 @@ export function AnalysisResult({ data }) {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diagram Modal */}
+      {showDiagramModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0d1117] border border-slate-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="font-bold text-slate-200 flex items-center gap-2">
+                <Network size={16} /> Control Flow Graph
+              </h3>
+              <button onClick={() => setShowDiagramModal(false)} className="text-slate-500 hover:text-slate-300">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-white/5">
+              <img src={`data:image/png;base64,${data.diagram}`} alt="Control Flow Graph" className="max-w-full max-h-full object-contain rounded shadow-lg" />
             </div>
           </div>
         </div>

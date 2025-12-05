@@ -33,6 +33,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from src.analyzer.diagram_generator import TraceGenerator
+
 @app.post("/analyze")
 async def analyze_code(request: AnalyzeRequest):
     try:
@@ -54,12 +56,21 @@ async def analyze_code(request: AnalyzeRequest):
 
         engine_out = infer_complexity(ctx, proc_name=proc_name)
         
+        # Generate Diagram
+        diagram_b64 = None
+        try:
+            generator = TraceGenerator(ast)
+            diagram_b64 = generator.generate_base64()
+        except Exception as e:
+            print(f"Diagram generation failed: {e}")
+
         # Flatten for frontend convenience
         proc_info = engine_out["procedures"][proc_name]
         return {
             "procedure_name": proc_name,
             "complexity": proc_info, 
-            "analysis_full": engine_out
+            "analysis_full": engine_out,
+            "diagram": diagram_b64
         }
     except Exception as e:
         import traceback
