@@ -208,3 +208,5 @@ __marimo__/
 
 
 .github
+.node_modules
+node_modules
