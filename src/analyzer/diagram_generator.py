@@ -128,7 +128,8 @@ class TraceGenerator:
         node_id = f"node_{self.node_count}"
         self.node_count += 1
         # Limpiar etiqueta para evitar errores de sintaxis DOT
-        clean_label = str(label).replace(":", "∶")
+        # clean_label = str(label).replace(":", "∶")  <-- CAUSANTE DEL ERROR DE FUENTE
+        clean_label = str(label)
         self.graph.node(node_id, label=clean_label, **kwargs)
         return node_id
 
@@ -141,7 +142,7 @@ class TraceGenerator:
             if typ == "Assign":
                 target = self._expr_to_str(stmt.get('target'))
                 value = self._expr_to_str(stmt.get('value'))
-                label = f"{target} 🡨 {value}"
+                label = f"{target} <- {value}"
                 node = self._add_node(label, **self.style["process"])
                 self.graph.edge(current, node, **self.style["edge"])
                 current = node
@@ -192,7 +193,7 @@ class TraceGenerator:
 
                 # Nodo Header
                 loop_header = self._add_node(
-                    f"FOR {var} 🡨 {start} TO {end}", **self.style["loop"])
+                    f"FOR {var} <- {start} TO {end}", **self.style["loop"])
                 self.graph.edge(current, loop_header, **self.style["edge"])
 
                 # Cuerpo
