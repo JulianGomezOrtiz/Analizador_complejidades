@@ -75,7 +75,7 @@ function App() {
           <div className="flex flex-col gap-4 h-full min-h-0">
             <div className="flex-1 bg-[#161b22] rounded-lg border border-slate-800 p-6 overflow-y-auto custom-scrollbar shadow-sm">
               {result ? (
-                <AnalysisResult data={result} />
+                <AnalysisResult data={result} code={code} />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-4">
                   <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center">

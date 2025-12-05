@@ -74,6 +74,24 @@ async def translate_text(request: TranslateRequest):
          return {"error": code, "code": None}
     return {"code": code}
 
+@app.post("/diagram")
+async def generate_diagram(request: AnalyzeRequest):
+    try:
+        norm = normalize_source(request.code)
+        tree = parse_source(norm)
+        ast = tree_to_ast(tree)
+        
+        # Generate DOT source
+        from src.analyzer.diagram_generator import TraceGenerator
+        generator = TraceGenerator(ast)
+        dot_source = generator.get_dot_source()
+        
+        return {"dot_source": dot_source}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "dot_source": None}
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}

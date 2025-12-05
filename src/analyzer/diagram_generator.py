@@ -20,17 +20,17 @@ class TraceGenerator:
         # Paleta de Colores "Engineering"
         self.style = {
             # Verde suave
-            "start":   {"shape": "Mdiamond", "style": "filled", "fillcolor": "#C5E1A5", "fontname": "Consolas-Bold"},
+            "start":   {"shape": "Mdiamond", "style": "filled", "fillcolor": "#C5E1A5", "fontname": "Consolas-Bold", "margin": "0.2,0.1"},
             # Rojo suave
-            "end":     {"shape": "Msquare",  "style": "filled", "fillcolor": "#EF9A9A", "fontname": "Consolas-Bold"},
+            "end":     {"shape": "Msquare",  "style": "filled", "fillcolor": "#EF9A9A", "fontname": "Consolas-Bold", "margin": "0.2,0.1"},
             # Azul muy claro
-            "process": {"shape": "box",      "style": "filled", "fillcolor": "#E3F2FD", "fontname": "Consolas", "penwidth": "0.5"},
+            "process": {"shape": "box",      "style": "filled", "fillcolor": "#E3F2FD", "fontname": "Consolas", "penwidth": "0.5", "margin": "0.3,0.1"},
             # Amarillo
-            "decision": {"shape": "diamond", "style": "filled", "fillcolor": "#FFF59D", "fontname": "Consolas", "height": "0.8"},
+            "decision": {"shape": "diamond", "style": "filled", "fillcolor": "#FFF59D", "fontname": "Consolas", "height": "0.8", "margin": "0.2,0.1"},
             # Azul Loop
-            "loop":    {"shape": "hexagon",  "style": "filled", "fillcolor": "#B3E5FC", "fontname": "Consolas-Bold"},
+            "loop":    {"shape": "hexagon",  "style": "filled", "fillcolor": "#B3E5FC", "fontname": "Consolas-Bold", "margin": "0.2,0.1"},
             # Violeta
-            "call":    {"shape": "component", "style": "filled", "fillcolor": "#E1BEE7", "fontname": "Consolas"},
+            "call":    {"shape": "component", "style": "filled", "fillcolor": "#E1BEE7", "fontname": "Consolas", "margin": "0.2,0.1"},
             "edge":    {"fontname": "Arial", "fontsize": "10", "color": "#546E7A"}
         }
 
@@ -76,6 +76,46 @@ class TraceGenerator:
                 print(f" ✨ Diagrama PRO generado: {output_path}.{self.format}")
             except graphviz.backend.ExecutableNotFound:
                 print("⚠️ ERROR: Graphviz no está instalado o no está en el PATH.")
+
+    def get_dot_source(self) -> str:
+        """Genera y retorna el código DOT del diagrama sin renderizar archivo."""
+        procs = self.ast.get("procedures", [])
+        if not procs:
+            return ""
+            
+        # Por simplicidad, generamos el diagrama del primer procedimiento
+        # O podríamos generar un subgraph por cada uno.
+        # Aquí asumimos 1 procedimiento principal o tomamos el primero.
+        proc = procs[0]
+        proc_name = proc.get("name", "Unknown")
+        
+        self.graph = graphviz.Digraph(f'cluster_{proc_name}', format=self.format)
+        self.graph.attr(
+            rankdir='TB',
+            splines='ortho',
+            nodesep='0.5',
+            ranksep='0.5',
+            fontname='Helvetica',
+            label=f'CFG: {proc_name}',
+            labelloc='t',
+            bgcolor='transparent' # Fondo transparente para mejor integración UI
+        )
+        self.node_count = 0
+
+        # --- Inicio ---
+        params = ", ".join([p['name'] for p in proc.get('params', [])])
+        start_label = f"START\n{proc_name}({params})"
+        start_node = self._add_node(start_label, **self.style["start"])
+
+        # --- Cuerpo ---
+        last_node = self._visit_block(proc.get("body", []), start_node)
+
+        # --- Fin ---
+        end_node = self._add_node("END", **self.style["end"])
+        if last_node:
+            self.graph.edge(last_node, end_node, **self.style["edge"])
+            
+        return self.graph.source
 
     def _add_node(self, label, **kwargs):
         node_id = f"node_{self.node_count}"
