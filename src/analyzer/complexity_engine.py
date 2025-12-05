@@ -8,7 +8,6 @@ Produce O, Ω, Θ basándose en técnicas formales de las notas de clase:
 
 from typing import Dict, Any, List
 import re
-import math
 
 
 def _nesting_to_theta(k: int) -> str:
@@ -27,7 +26,6 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
     for name, info in targets.items():
         loops = info.get("loops", [])
         recursions = info.get("recursions", [])
-        cost_report = info.get("cost_report", {})
 
         # --- Ajuste de Anidamiento (Sanity Check) ---
         raw_nesting = info.get("max_nesting", 0)
@@ -37,6 +35,7 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             max_nesting = raw_nesting
 
         reasoning: List[str] = []
+
         # ============================================================================
         # 1. ANÁLISIS RECURSIVO (Técnicas Avanzadas)
         # ============================================================================
@@ -78,15 +77,13 @@ def infer_complexity(context: Dict[str, Any], proc_name=None) -> Dict[str, Any]:
             dependent_vars = set()
             is_dependent = False
             uses_n = False
-            is_geometric = False
-            is_harmonic = False
 
             # Primera pasada: registrar variables de bucles
             for lp in loops:
                 if lp.get("var"):
                     dependent_vars.add(lp.get("var"))
 
-            # Segunda pasada: verificar dependencias y tipos de serie
+            # Segunda pasada: verificar dependencias en start/end
             for lp in loops:
                 s, e = lp.get("start"), lp.get("end")
                 step = lp.get("step")
@@ -367,14 +364,14 @@ def _solve_recurrence(info: Dict[str, Any], has_loops: bool) -> Dict[str, Any]:
             "big_o": f"O({phi:.3f}^n)", "big_theta": f"Theta({phi:.3f}^n)", "big_omega": "Omega(1)",
             "worst_case": f"O({phi:.3f}^n)", "average_case": f"Theta({phi:.3f}^n)", "best_case": "Omega(1)",
             "recurrence": "T(n) = T(n-1) + T(n-2)",
-            "cotas_fuertes": f"T(n) ~ {phi:.3f}^n",
+            "cotas_fuertes": "T(n) ~ 1.618^n",
             "reasoning": [
                 "Recurrencia Lineal Homogénea de Segundo Orden detectada (Fibonacci).",
                 f"  -> La raíz dominante es Phi ({phi:.3f}...) -> Crecimiento Exponencial."
             ]
         }
 
-    # --- CASO 3: RECURSIÓN LINEAL SIMPLE (o Múltiple) ---
+    # --- CASO 3: RECURSIÓN LINEAL SIMPLE ---
     if has_n1 or "n" in joined:
         if a > 1:
             return {

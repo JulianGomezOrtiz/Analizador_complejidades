@@ -1,12 +1,12 @@
 ► CONTEO DE PARES (CONDICIÓN DEPENDIENTE)
 PROCEDURE CountPairs(A, n)
-    count <- 0;
-    FOR i <- 1 TO n DO
-        FOR j <- i + 1 TO n DO
+    count ← 0
+    FOR i ← 1 TO n DO
+        FOR j ← i + 1 TO n DO
             IF A[i] < A[j] THEN
-                count <- count + 1;
+                count ← count + 1
             ENDIF
         END FOR
     END FOR
-    RETURN count;
+    RETURN count
 END PROCEDURE

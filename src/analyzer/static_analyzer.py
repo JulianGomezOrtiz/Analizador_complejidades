@@ -12,23 +12,14 @@ def analyze_ast_for_patterns(ast: Dict[str, Any]) -> Dict[str, Any]:
         proc_name = proc.get("name")
         body = proc.get("body", [])
 
-        # Pattern Analyzer
         analyzer = ProcAnalyzer(proc_name)
         analyzer.visit(body)
-
-        # Cost Reporter
-        cost_reporter = CostReporter()
-        cost_reporter.visit(body)
 
         procedures[proc_name] = {
             "loops": analyzer.loops,
             "recursions": analyzer.recursions,
             "calls": analyzer.calls,
-            "max_nesting": analyzer.max_nesting,
-            "cost_report": {
-                "total_ops": cost_reporter.total_ops,
-                "breakdown": cost_reporter.ops_breakdown
-            }
+            "max_nesting": analyzer.max_nesting
         }
 
     return {"procedures": procedures}
@@ -82,7 +73,6 @@ class ProcAnalyzer:
                     "var": node.get("var"),
                     "start": node.get("start"),
                     "end": node.get("end"),
-                    "step": node.get("step"),
                     "nesting": self.current_nesting
                 })
             elif typ in ("While", "Repeat"):

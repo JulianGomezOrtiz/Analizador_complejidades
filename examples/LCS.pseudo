@@ -1,26 +1,28 @@
 ► LONGEST COMMON SUBSEQUENCE (PROGRAMACIÓN DINÁMICA)
 PROCEDURE LCS(X, Y, m, n)
-    FOR i <- 0 TO m DO
-        C[i][0] <- 0;
+    CREATE C[0..m][0..n]
+
+    FOR i ← 0 TO m DO
+        C[i][0] ← 0
     END FOR
 
-    FOR j <- 0 TO n DO
-        C[0][j] <- 0;
+    FOR j ← 0 TO n DO
+        C[0][j] ← 0
     END FOR
 
-    FOR i <- 1 TO m DO
-        FOR j <- 1 TO n DO
+    FOR i ← 1 TO m DO
+        FOR j ← 1 TO n DO
             IF X[i] = Y[j] THEN
-                C[i][j] <- C[i-1][j-1] + 1;
+                C[i][j] ← C[i-1][j-1] + 1
             ELSE
                 IF C[i-1][j] ≥ C[i][j-1] THEN
-                    C[i][j] <- C[i-1][j];
+                    C[i][j] ← C[i-1][j]
                 ELSE
-                    C[i][j] <- C[i][j-1];
+                    C[i][j] ← C[i][j-1]
                 ENDIF
             ENDIF
         END FOR
     END FOR
 
-    RETURN C[m][n];
+    RETURN C[m][n]
 END PROCEDURE
